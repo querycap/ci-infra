@@ -11,4 +11,4 @@ build:
 	.
 
 sync:
-	cd ./_sync/ && make -e IMAGE=${IMAGE} sync-image
+	cd ../_sync/ && make -e IMAGE=${IMAGE} sync-image
