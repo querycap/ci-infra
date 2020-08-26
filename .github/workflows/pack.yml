@@ -9,9 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: crazy-max/ghaction-docker-buildx@v1
+      - uses: crazy-max/ghaction-docker-buildx@v3
         with:
-          buildx-version: latest
-          qemu-version: latest
-      - run: echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          buildx-version: v0.4.2
+      - run: |
+          cat > ~/.docker/config.json << EOF
+          ${{ secrets.DOCKER_CONFIG }}
+          EOF
       - run: make build
