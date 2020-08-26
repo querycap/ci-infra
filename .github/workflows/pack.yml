@@ -12,8 +12,10 @@ jobs:
       - uses: crazy-max/ghaction-docker-buildx@v3
         with:
           buildx-version: v0.4.2
-      - run: |
+      - name: setup buildx
+        run: |
           cat > ~/.docker/config.json << EOF
           ${{ secrets.DOCKER_CONFIG }}
           EOF
       - run: make build
+      - run: make sync

@@ -1,12 +1,14 @@
 VERSION=$(shell cat .version)
 HUB=querycap
-HUB2=registry.cn-hangzhou.aliyuncs.com/querycap
+IMAGE=${HUB}/docker-buildx:${VERSION}
 
 build:
 	docker buildx build \
 	--push \
 	--platform linux/amd64,linux/arm64 \
 	--build-arg=VERSION=${VERSION} \
-	-t ${HUB}/docker-buildx:${VERSION} \
-	-t ${HUB2}/docker-buildx:${VERSION} \
+	-t ${IMAGE} \
 	.
+
+sync:
+	cd ./_sync/ && make -e IMAGE=${IMAGE} sync-image
