@@ -1,10 +1,10 @@
-name: docker-buildx
+name: gitlab-runner-helper
 
 on:
   push:
     paths:
-      - '.github/workflows/docker-buildx.yml'
-      - 'docker-buildx/**'
+      - '.github/workflows/gitlab-runner-helper.yml'
+      - 'gitlab-runner-helper/**'
 
 jobs:
   buildx:
@@ -19,5 +19,5 @@ jobs:
           cat > ~/.docker/config.json << EOF
           ${{ secrets.DOCKER_CONFIG }}
           EOF
-      - run: cd docker-buildx && make build
-      - run: cd docker-buildx && make sync
+      - run: cd gitlab-runner-helper && make build
+      - run: cd gitlab-runner-helper && make sync
