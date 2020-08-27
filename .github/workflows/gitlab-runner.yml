@@ -1,15 +1,14 @@
-name: gitlab-runner-helper
+name: gitlab-runner
 
 on:
   push:
     paths:
-      - '.github/workflows/gitlab-runner-helper.yml'
-      - 'gitlab-runner-helper/**'
+      - '.github/workflows/gitlab-runner.yml'
+      - 'gitlab-runner/**'
 
 jobs:
   buildx:
-#    runs-on: ubuntu-latest
-    runs-on: [self-hosted, linux, ARM64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: docker/setup-qemu-action@master
@@ -19,5 +18,5 @@ jobs:
           cat > ~/.docker/config.json << EOF
           ${{ secrets.DOCKER_CONFIG }}
           EOF
-      - run: cd gitlab-runner-helper && make build
-      - run: cd gitlab-runner-helper && make sync
+      - run: cd gitlab-runner && make build
+      - run: cd gitlab-runner && make sync

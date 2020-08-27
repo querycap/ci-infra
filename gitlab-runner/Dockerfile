@@ -1,0 +1,2 @@
+ARG VERSION
+FROM gitlab/gitlab-runner:alpine-v${VERSION}
