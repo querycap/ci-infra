@@ -1,10 +1,13 @@
+# syntax = docker/dockerfile:experimental
+
 FROM golang:1.15 as builder
 
 ARG VERSION
-RUN git clone --depth 1 -b kubernetes-driver-enhancement https://github.com/morlay/buildx.git /go/src/github.com/docker/buildx
+RUN git clone --depth 1 -b master https://github.com/docker/buildx.git /go/src/github.com/docker/buildx
 WORKDIR /go/src/github.com/docker/buildx
 
-RUN CGO_ENABLED=0 go build -o /go/bin/docker-buildx ./cmd/buildx
+RUN --mount=type=cache,id=gomod,target=/go/src/mod \
+    CGO_ENABLED=0 go build -o /go/bin/docker-buildx ./cmd/buildx
 
 FROM docker
 COPY --from=builder /go/bin/docker-buildx /root/.docker/cli-plugins/docker-buildx
