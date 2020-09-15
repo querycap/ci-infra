@@ -1,12 +1,11 @@
-VERSION=latest
+VERSION=dind
 HUB=querycap
-IMAGE=${HUB}/docker:dind:${VERSION}
+IMAGE=${HUB}/docker:${VERSION}
 
 build:
 	docker buildx build \
 	--push \
 	--platform linux/amd64,linux/arm64 \
-	--build-arg=VERSION=${VERSION} \
 	-t ${IMAGE} \
 	.
 
