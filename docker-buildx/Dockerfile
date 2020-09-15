@@ -12,3 +12,4 @@ RUN --mount=type=cache,id=gomod,target=/go/src/mod \
 FROM docker
 COPY --from=builder /go/bin/docker-buildx /root/.docker/cli-plugins/docker-buildx
 ENV DOCKER_CLI_EXPERIMENTAL=enabled
+RUN apk add --no-cache make
