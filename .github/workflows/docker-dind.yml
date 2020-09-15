@@ -1,0 +1,22 @@
+name: docker-dind
+
+on:
+  push:
+    paths:
+      - '.github/workflows/docker-dind.yml'
+      - 'docker-dind/**'
+
+jobs:
+  buildx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: docker/setup-qemu-action@master
+      - uses: docker/setup-buildx-action@master
+      - name: setup buildx
+        run: |
+          cat > ~/.docker/config.json << EOF
+          ${{ secrets.DOCKER_CONFIG }}
+          EOF
+      - run: cd docker-dind && make build
+      - run: cd docker-dind && make sync
