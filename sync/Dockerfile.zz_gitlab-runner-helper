@@ -1,0 +1,1 @@
+FROM querycap/gitlab-runner-helper:5c29fa80

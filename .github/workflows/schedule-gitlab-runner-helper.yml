@@ -1,0 +1,29 @@
+name: schedule-gitlab-runner-helper
+"on":
+  push:
+    branches:
+    - master
+    paths:
+    - .github/workflows/schedule-gitlab-runner-helper.yml
+  schedule:
+  - cron: 0 10 * * *
+jobs:
+  upgrade:
+    runs-on:
+    - ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - id: upgrade
+      run: cd build/gitlab-runner-helper && make upgrade
+    - run: |-
+        git config --local user.email "support@github.com"
+        git config --local user.name "dependabot[bot]"
+        git commit -sam "build(deps): bump gitlab-runner-helper from ${{ steps.upgrade.outputs.prev-version }} to ${{ steps.upgrade.outputs.version }}" || exit 0
+    - uses: peter-evans/create-pull-request@v3
+      with:
+        body: 'build(deps): bump gitlab-runner-helper from ${{ steps.upgrade.outputs.prev-version }} to ${{ steps.upgrade.outputs.version }}'
+        branch: upgrade/gitlab-runner-helper/gitlab-runner-helper
+        delete-branch: "true"
+        labels: dependencies
+        title: 'build(deps): bump gitlab-runner-helper from ${{ steps.upgrade.outputs.prev-version }} to ${{ steps.upgrade.outputs.version }}'
+        token: ${{ secrets.GITHUB_TOKEN }}

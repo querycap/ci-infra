@@ -3,13 +3,13 @@
 FROM golang:1.15 as builder
 
 ARG VERSION
-RUN git clone --depth 1 -b master https://github.com/docker/buildx.git /go/src/github.com/docker/buildx
+RUN git clone --depth 1 -b ${VERSION} https://github.com/docker/buildx.git /go/src/github.com/docker/buildx
 WORKDIR /go/src/github.com/docker/buildx
 
 RUN --mount=type=cache,id=gomod,target=/go/src/mod \
     CGO_ENABLED=0 go build -o /go/bin/docker-buildx ./cmd/buildx
 
 FROM docker
+RUN apk add --no-cache make
 COPY --from=builder /go/bin/docker-buildx /root/.docker/cli-plugins/docker-buildx
 ENV DOCKER_CLI_EXPERIMENTAL=enabled
-RUN apk add --no-cache make
