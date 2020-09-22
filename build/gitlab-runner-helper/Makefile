@@ -19,7 +19,7 @@ ORIGIN = gitlab/gitlab-runner-helper
 
 upgrade:
 	echo ::set-output name=prev-version::$(VERSION)
-	$(MAKE) upgrade-version VERSION=$(shell curl -sL "https://hub.docker.com/v2/repositories/$(ORIGIN)/tags?page=1&ordering=last_updated" | jq -r ".results[].name" | grep arm64- | head -2 | tail -1 | sed -e "s/^arm64-//" )
+	$(MAKE) upgrade-version VERSION=$(shell curl -sL "https://hub.docker.com/v2/repositories/$(ORIGIN)/tags?page=1&name=-v&ordering=last_updated" | jq -r ".results[].name" | grep arm64- | head -1 | sed -e "s/^arm64-//" )
 
 upgrade-version: version
 	echo "$(VERSION)" > .version
