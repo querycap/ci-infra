@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ func glob(patterns ...string) (files []string, err error) {
 }
 
 func resolveProjects() (Projects, error) {
-	dockerfiles, err := glob("./build/*/Dockerfile.*", "./build/*/.version", "./build/*/.cron")
+	dockerfiles, err := glob("./build/*/Dockerfile.*", "./build/*/.version")
 	if err != nil {
 		return nil, err
 	}
@@ -39,9 +40,6 @@ func resolveProjects() (Projects, error) {
 		}
 
 		switch dockerfileName {
-		case ".cron":
-			data, _ := ioutil.ReadFile(dockerfiles[i])
-			p.ScheduleCron = string(data)
 		case ".version", "Dockerfile.version":
 			data, _ := ioutil.ReadFile(dockerfiles[i])
 			p.Version = getVersionFromDockerfileVersionOrDotVersion(data)
@@ -54,13 +52,26 @@ func resolveProjects() (Projects, error) {
 	return projects, nil
 }
 
-type Projects = map[string]*Project
+type Projects map[string]*Project
+
+func (projects Projects) Range(fn func(p *Project)) {
+	names := make([]string, 0)
+
+	for i := range projects {
+		names = append(names, projects[i].Name)
+	}
+
+	sort.Strings(names)
+
+	for _, n := range names {
+		fn(projects[n])
+	}
+}
 
 type Project struct {
-	Name         string
-	ScheduleCron string
-	Version      string
-	Dockerfiles  []string
+	Name        string
+	Version     string
+	Dockerfiles []string
 }
 
 var reVersionPrefix = regexp.MustCompile("@opt:prefix +(.+)")

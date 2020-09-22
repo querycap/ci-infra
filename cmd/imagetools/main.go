@@ -29,83 +29,19 @@ func main() {
 		panic(err)
 	}
 
-	for _, p := range projects {
-		w := githubWorkflowFromProject(p)
-		writeWorkflow(w)
-	}
-
 	data, _ := yaml.Marshal(projects)
 	fmt.Println(string(data))
 
 	generateWorkflows(projects)
-	generateWorkflowsForSchedule(projects)
 	generateWorkflowsForSync(projects)
 	generateDependabot(projects)
 }
 
 func generateWorkflows(projects Projects) {
-	for _, p := range projects {
+	projects.Range(func(p *Project) {
 		w := githubWorkflowFromProject(p)
 		writeWorkflow(w)
-	}
-}
-
-func generateWorkflowsForSchedule(projects Projects) {
-	for _, p := range projects {
-		w := githubWorkflowSchedule(p)
-		writeWorkflow(w)
-	}
-}
-
-func githubWorkflowSchedule(p *Project) *GithubWorkflow {
-	if p.ScheduleCron == "" {
-		return nil
-	}
-
-	w := &GithubWorkflow{}
-	w.Name = "schedule-" + p.Name
-	w.On = Values{
-		"push": Values{
-			"paths": []string{
-				filepath.Join(".github/workflows", w.Name+".yml"),
-			},
-		},
-		"schedule": []interface{}{
-			Values{
-				"cron": p.ScheduleCron,
-			},
-		},
-	}
-	w.Jobs = map[string]*WorkflowJob{}
-
-	for i := range p.Dockerfiles {
-		name := nameFromDockerfile(p.Dockerfiles[i])
-
-		title := `build(deps): bump ` + name + ` from ${{ steps.upgrade.outputs.prev-version }} to ${{ steps.upgrade.outputs.version }}`
-
-		w.Jobs["upgrade"] = &WorkflowJob{
-			RunsOn: []string{"ubuntu-latest"},
-			Steps: []*WorkflowStep{
-				Uses("actions/checkout@v2"),
-				Uses("").ID("upgrade").Do(fmt.Sprintf("cd %s/%s && make upgrade", basePathForBuild, p.Name)),
-				Uses("").Do(`
-git config --local user.email "support@github.com"
-git config --local user.name "dependabot[bot]"
-git commit -sam "` + title + `" || exit 0
-`),
-				Uses("peter-evans/create-pull-request@v3").With(map[string]string{
-					"token":         "${{ secrets.GITHUB_TOKEN }}",
-					"delete-branch": "true",
-					"title":         title,
-					"body":          title,
-					"labels":        "dependencies",
-					"branch":        fmt.Sprintf("upgrade/%s/%s", p.Name, name),
-				}),
-			},
-		}
-	}
-
-	return w
+	})
 }
 
 func githubWorkflowFromProject(p *Project) *GithubWorkflow {
@@ -149,13 +85,13 @@ func jobDockerBuild(projectName string, name string, needs ...string) *WorkflowJ
 }
 
 func generateWorkflowsForSync(projects Projects) {
-	for _, p := range projects {
+	projects.Range(func(p *Project) {
 		for i := range p.Dockerfiles {
 			name := nameFromDockerfile(p.Dockerfiles[i])
 			dockerfile := fmt.Sprintf("sync/Dockerfile.zz_%s", name)
 			_ = ioutil.WriteFile(dockerfile, []byte(fmt.Sprintf("FROM "+hub+"/%s:%s", name, p.Version)), os.ModePerm)
 		}
-	}
+	})
 
 	files, _ := filepath.Glob("sync/Dockerfile.*")
 
@@ -179,14 +115,14 @@ updates:
       interval: "daily"
 `)
 
-	for _, p := range projects {
+	projects.Range(func(p *Project) {
 		_, _ = io.WriteString(buf, fmt.Sprintf(`
   - package-ecosystem: "docker"
     directory: "/build/%s"
     schedule:
       interval: "daily"
 `, p.Name))
-	}
+	})
 
 	_ = ioutil.WriteFile(".github/dependabot.yml", buf.Bytes(), os.ModePerm)
 }

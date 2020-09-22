@@ -1,1 +1,1 @@
-FROM querycap/gitlab-runner-helper:13.1.0
+FROM querycap/gitlab-runner-helper:13.3.1
