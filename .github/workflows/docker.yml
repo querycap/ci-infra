@@ -21,4 +21,4 @@ jobs:
       run: cd build/docker && make build HUB=querycap NAME=docker
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/docker && make build HUB=querycap NAME=docker TAG=${{ github.sha }}
+      run: cd build/docker && make build HUB=querycap NAME=docker TAG=temp-${{ github.sha }}

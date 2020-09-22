@@ -83,7 +83,7 @@ func generateWorkflows(projects Projects) {
 						"password": "${{ secrets.DOCKER_PASSWORD }}",
 					}),
 					Uses("").If("github.ref == 'refs/heads/master'").Named("Versioned Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s", basePathForBuild, p.Name, hub, fullname(name, tags))),
-					Uses("").If("github.ref != 'refs/heads/master'").Named("Temp Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s TAG=${{ github.sha }}", basePathForBuild, p.Name, hub, fullname(name, tags))),
+					Uses("").If("github.ref != 'refs/heads/master'").Named("Temp Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s TAG=temp-${{ github.sha }}", basePathForBuild, p.Name, hub, fullname(name, tags))),
 				},
 			}
 

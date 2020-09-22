@@ -21,4 +21,4 @@ jobs:
       run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner-helper
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner-helper TAG=${{ github.sha }}
+      run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner-helper TAG=temp-${{ github.sha }}
