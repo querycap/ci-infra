@@ -1,13 +1,13 @@
-name: sync-gitlab-runner
+name: zz-sync-gitlab-runner
 "on":
   push:
     paths:
-    - sync/Dockerfile.gitlab-runner
+    - sync/Dockerfile.gitlab-runner,arm64
 jobs:
   sync:
     runs-on:
     - self-hosted
-    - ARM64
+    - arm64
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -17,4 +17,4 @@ jobs:
         password: ${{ secrets.DOCKER_MIRROR_PASSWORD }}
         registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
         username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
-    - run: cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=gitlab-runner
+    - run: cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=gitlab-runner,arm64

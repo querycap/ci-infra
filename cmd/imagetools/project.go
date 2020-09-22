@@ -43,6 +43,7 @@ func resolveProjects() (Projects, error) {
 		case ".version", "Dockerfile.version":
 			data, _ := ioutil.ReadFile(dockerfiles[i])
 			p.Version = getVersionFromDockerfileVersionOrDotVersion(data)
+			p.VersionFile = dockerfiles[i]
 		default:
 			p.Dockerfiles = append(p.Dockerfiles, dockerfiles[i])
 		}
@@ -71,6 +72,7 @@ func (projects Projects) Range(fn func(p *Project)) {
 type Project struct {
 	Name        string
 	Version     string
+	VersionFile string
 	Dockerfiles []string
 }
 

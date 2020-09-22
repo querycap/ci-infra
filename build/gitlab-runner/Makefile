@@ -1,7 +1,7 @@
 VERSION = $(shell cat Dockerfile.version | grep "^FROM " | sed -e "s/FROM.*:alpine-v//g" )
 TAG = $(VERSION)
 HUB = querycap
-NAME = gitlab-runner-helper
+NAME = gitlab-runner
 TARGET_PLATFORM = linux/arm64,linux/amd64
 
 build:

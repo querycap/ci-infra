@@ -1,11 +1,11 @@
-name: docker-buildx
+name: docker
 "on":
   push:
     paths:
-    - build/docker-buildx/Dockerfile.docker-buildx
-    - build/docker-buildx/.version
+    - build/docker/Dockerfile.docker
+    - build/docker/Dockerfile.version
 jobs:
-  docker-buildx:
+  docker:
     runs-on:
     - ubuntu-latest
     steps:
@@ -18,7 +18,7 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
     - name: Versioned Build
       if: github.ref == 'refs/heads/master'
-      run: cd build/docker-buildx && make build HUB=querycap NAME=docker-buildx
+      run: cd build/docker && make build HUB=querycap NAME=docker
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/docker-buildx && make build HUB=querycap NAME=docker-buildx TAG=${{ github.sha }}
+      run: cd build/docker && make build HUB=querycap NAME=docker TAG=${{ github.sha }}

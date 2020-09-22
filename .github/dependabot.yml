@@ -12,11 +12,16 @@ updates:
       interval: "daily"
 
   - package-ecosystem: "docker"
+    directory: "/build/docker"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "docker"
     directory: "/build/docker-buildx"
     schedule:
       interval: "daily"
 
   - package-ecosystem: "docker"
-    directory: "/build/gitlab-runner-helper"
+    directory: "/build/gitlab-runner"
     schedule:
       interval: "daily"

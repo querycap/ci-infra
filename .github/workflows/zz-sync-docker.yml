@@ -1,13 +1,13 @@
-name: sync-zz_docker-buildx
+name: zz-sync-docker
 "on":
   push:
     paths:
-    - sync/Dockerfile.zz_docker-buildx
+    - sync/Dockerfile.docker,arm64
 jobs:
   sync:
     runs-on:
     - self-hosted
-    - ARM64
+    - arm64
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -17,4 +17,4 @@ jobs:
         password: ${{ secrets.DOCKER_MIRROR_PASSWORD }}
         registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
         username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
-    - run: cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=zz_docker-buildx
+    - run: cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=docker,arm64

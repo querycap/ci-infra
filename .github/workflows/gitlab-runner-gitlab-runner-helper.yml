@@ -1,8 +1,9 @@
-name: gitlab-runner-helper
+name: gitlab-runner-gitlab-runner-helper
 "on":
   push:
     paths:
-    - build/gitlab-runner-helper/**
+    - build/gitlab-runner/Dockerfile.gitlab-runner-helper
+    - build/gitlab-runner/Dockerfile.version
 jobs:
   gitlab-runner-helper:
     runs-on:
@@ -17,7 +18,7 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
     - name: Versioned Build
       if: github.ref == 'refs/heads/master'
-      run: cd build/gitlab-runner-helper && make build HUB=querycap NAME=gitlab-runner-helper
+      run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner-helper
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/gitlab-runner-helper && make build HUB=querycap NAME=gitlab-runner-helper TAG=${{ github.sha }}
+      run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner-helper TAG=${{ github.sha }}

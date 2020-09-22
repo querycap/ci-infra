@@ -24,6 +24,17 @@ func init() {
 }
 
 func main() {
+	files, err := glob(".github/workflows/*", "sync/Dockerfile.*")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := range files {
+		if err := os.Remove(files[i]); err != nil {
+			panic(err)
+		}
+	}
+
 	projects, err := resolveProjects()
 	if err != nil {
 		panic(err)
@@ -39,56 +50,53 @@ func main() {
 
 func generateWorkflows(projects Projects) {
 	projects.Range(func(p *Project) {
-		w := githubWorkflowFromProject(p)
-		writeWorkflow(w)
+		for i := range p.Dockerfiles {
+			name, tags := nameAndTagsFromDockerfile(p.Dockerfiles[i])
+
+			w := &GithubWorkflow{}
+
+			if p.Name == name {
+				w.Name = p.Name
+			} else {
+				w.Name = p.Name + "-" + name
+			}
+
+			w.On = Values{
+				"push": Values{
+					"paths": []string{
+						p.Dockerfiles[i],
+						p.VersionFile,
+					},
+				},
+			}
+
+			w.Jobs = map[string]*WorkflowJob{}
+
+			w.Jobs[name] = &WorkflowJob{
+				RunsOn: runsOn(tags),
+				Steps: []*WorkflowStep{
+					Uses("actions/checkout@v2"),
+					Uses("docker/setup-qemu-action@v1"),
+					Uses("docker/setup-buildx-action@v1"),
+					Uses("docker/login-action@v1").With(map[string]string{
+						"username": "${{ secrets.DOCKER_USERNAME }}",
+						"password": "${{ secrets.DOCKER_PASSWORD }}",
+					}),
+					Uses("").If("github.ref == 'refs/heads/master'").Named("Versioned Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s", basePathForBuild, p.Name, hub, fullname(name, tags))),
+					Uses("").If("github.ref != 'refs/heads/master'").Named("Temp Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s TAG=${{ github.sha }}", basePathForBuild, p.Name, hub, fullname(name, tags))),
+				},
+			}
+
+			writeWorkflow(w)
+		}
 	})
-}
-
-func githubWorkflowFromProject(p *Project) *GithubWorkflow {
-	w := &GithubWorkflow{}
-	w.Name = p.Name
-
-	w.On = Values{
-		"push": Values{
-			"paths": []string{
-				filepath.Join(basePathForBuild, p.Name, "**"),
-			},
-		},
-	}
-
-	w.Jobs = map[string]*WorkflowJob{}
-
-	for i := range p.Dockerfiles {
-		name := nameFromDockerfile(p.Dockerfiles[i])
-		w.Jobs[name] = jobDockerBuild(p.Name, name)
-	}
-
-	return w
-}
-
-func jobDockerBuild(projectName string, name string, needs ...string) *WorkflowJob {
-	return &WorkflowJob{
-		RunsOn: []string{"ubuntu-latest"},
-		Needs:  needs,
-		Steps: []*WorkflowStep{
-			Uses("actions/checkout@v2"),
-			Uses("docker/setup-qemu-action@v1"),
-			Uses("docker/setup-buildx-action@v1"),
-			Uses("docker/login-action@v1").With(map[string]string{
-				"username": "${{ secrets.DOCKER_USERNAME }}",
-				"password": "${{ secrets.DOCKER_PASSWORD }}",
-			}),
-			Uses("").If("github.ref == 'refs/heads/master'").Named("Versioned Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s", basePathForBuild, projectName, hub, name)),
-			Uses("").If("github.ref != 'refs/heads/master'").Named("Temp Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s TAG=${{ github.sha }}", basePathForBuild, projectName, hub, name)),
-		},
-	}
 }
 
 func generateWorkflowsForSync(projects Projects) {
 	projects.Range(func(p *Project) {
 		for i := range p.Dockerfiles {
-			name := nameFromDockerfile(p.Dockerfiles[i])
-			dockerfile := fmt.Sprintf("sync/Dockerfile.zz_%s", name)
+			name, _ := nameAndTagsFromDockerfile(p.Dockerfiles[i])
+			dockerfile := fmt.Sprintf("sync/Dockerfile.%s,arm64", name)
 			_ = ioutil.WriteFile(dockerfile, []byte(fmt.Sprintf("FROM "+hub+"/%s:%s", name, p.Version)), os.ModePerm)
 		}
 	})
@@ -96,7 +104,8 @@ func generateWorkflowsForSync(projects Projects) {
 	files, _ := filepath.Glob("sync/Dockerfile.*")
 
 	for i := range files {
-		writeWorkflow(githubWorkflowForSync(nameFromDockerfile(files[i]), files[i]))
+		name, tags := nameAndTagsFromDockerfile(files[i])
+		writeWorkflow(githubWorkflowForSync(name, files[i], tags...))
 	}
 }
 
@@ -136,17 +145,18 @@ func writeWorkflow(w *GithubWorkflow) {
 	_ = ioutil.WriteFile(fmt.Sprintf(".github/workflows/%s.yml", w.Name), data, os.ModePerm)
 }
 
-func githubWorkflowForSync(name string, dockerfile string) *GithubWorkflow {
+func githubWorkflowForSync(name string, dockerfile string, tags ...string) *GithubWorkflow {
 	w := &GithubWorkflow{}
-	w.Name = "sync-" + name
+	w.Name = "zz-sync-" + name
 	w.On = Values{
 		"push": Values{
 			"paths": []string{dockerfile},
 		},
 	}
+
 	w.Jobs = map[string]*WorkflowJob{
 		"sync": {
-			RunsOn: []string{"self-hosted", "ARM64"},
+			RunsOn: runsOn(tags),
 			Steps: []*WorkflowStep{
 				Uses("actions/checkout@v2"),
 				Uses("docker/setup-qemu-action@v1"),
@@ -156,10 +166,28 @@ func githubWorkflowForSync(name string, dockerfile string) *GithubWorkflow {
 					"username": "${{ secrets.DOCKER_MIRROR_USERNAME }}",
 					"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
 				}),
-				Uses("").Do(fmt.Sprintf(`cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=%s`, name)),
+				Uses("").Do(fmt.Sprintf(`cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=%s`, fullname(name, tags))),
 			},
 		},
 	}
 
 	return w
+}
+
+func runsOn(tags []string) []string {
+	if len(tags) == 0 {
+		return []string{"ubuntu-latest"}
+	}
+	return append([]string{"self-hosted"}, tags...)
+}
+
+func fullname(name string, flags []string) string {
+	b := bytes.NewBufferString(name)
+
+	for i := range flags {
+		b.WriteByte(',')
+		b.WriteString(flags[i])
+	}
+
+	return b.String()
 }

@@ -56,7 +56,10 @@ func (s WorkflowStep) Do(run string) *WorkflowStep {
 	return &s
 }
 
-func nameFromDockerfile(dockerfile string) string {
-	parts := strings.Split(dockerfile, ".")
-	return parts[1]
+func nameAndTagsFromDockerfile(dockerfile string) (string, []string) {
+	parts := strings.Split(strings.Split(dockerfile, ".")[1], ",")
+	if len(parts) > 1 {
+		return parts[0], parts[1:]
+	}
+	return parts[0], []string{}
 }
