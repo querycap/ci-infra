@@ -1,11 +1,8 @@
 name: gitlab-runner-helper
 "on":
-  pull_request:
-    paths:
-    - build/gitlab-runner-helper/*
   push:
     paths:
-    - build/gitlab-runner-helper/*
+    - build/gitlab-runner-helper/**
 jobs:
   gitlab-runner-helper:
     runs-on:

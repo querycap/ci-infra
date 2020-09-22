@@ -69,7 +69,6 @@ func githubWorkflowSchedule(p *Project) *GithubWorkflow {
 			"paths": []string{
 				filepath.Join(".github/workflows", w.Name+".yml"),
 			},
-			"branches": []string{"master"},
 		},
 		"schedule": []interface{}{
 			Values{
@@ -113,15 +112,12 @@ func githubWorkflowFromProject(p *Project) *GithubWorkflow {
 	w := &GithubWorkflow{}
 	w.Name = p.Name
 
-	event := Values{
-		"paths": []string{
-			filepath.Join(basePathForBuild, p.Name, "*"),
-		},
-	}
-
 	w.On = Values{
-		"push":         event,
-		"pull_request": event,
+		"push": Values{
+			"paths": []string{
+				filepath.Join(basePathForBuild, p.Name, "**"),
+			},
+		},
 	}
 
 	w.Jobs = map[string]*WorkflowJob{}

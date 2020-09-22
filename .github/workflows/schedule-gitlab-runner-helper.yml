@@ -1,8 +1,6 @@
 name: schedule-gitlab-runner-helper
 "on":
   push:
-    branches:
-    - master
     paths:
     - .github/workflows/schedule-gitlab-runner-helper.yml
   schedule:

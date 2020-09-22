@@ -1,11 +1,8 @@
 name: docker-buildx
 "on":
-  pull_request:
-    paths:
-    - build/docker-buildx/*
   push:
     paths:
-    - build/docker-buildx/*
+    - build/docker-buildx/**
 jobs:
   docker-buildx:
     runs-on:
