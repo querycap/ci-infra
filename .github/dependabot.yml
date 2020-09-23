@@ -21,6 +21,11 @@ updates:
       interval: "daily"
 
   - package-ecosystem: "docker"
+    directory: "/build/dockerfile"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "docker"
     directory: "/build/gitlab-runner"
     schedule:
       interval: "daily"
