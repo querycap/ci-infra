@@ -184,7 +184,7 @@ func githubWorkflowForSync(name string, dockerfile string, tags ...string) *Gith
 				Uses("").Do(`
 DOCKERFILE=sync/Dockerfile.` + fullname(name, tags) + `
 TAG=$(cat ${DOCKERFILE} | grep "^FROM " | sed -e "s/FROM //g" | head -1)
-make -f ./build/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
+make -f ./build/Makefile buildx TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
 `),
 			},
 		},
