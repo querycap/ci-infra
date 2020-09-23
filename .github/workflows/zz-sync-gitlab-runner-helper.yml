@@ -2,6 +2,7 @@ name: zz-sync-gitlab-runner-helper
 "on":
   push:
     paths:
+    - .github/workflows/zz-sync-gitlab-runner-helper.yml
     - sync/Dockerfile.gitlab-runner-helper,arm64
 jobs:
   sync:
@@ -18,6 +19,6 @@ jobs:
         registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
         username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
     - run: |-
-        DOCKERFILE=Dockerfile.gitlab-runner-helper,arm64
+        DOCKERFILE=sync/Dockerfile.gitlab-runner-helper,arm64
         TAG=$(cat ${DOCKERFILE} | grep "^FROM " | sed -e "s/FROM //g" | head -1)
-        make -f ./common/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
+        make -f ./build/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}

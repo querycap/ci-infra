@@ -150,7 +150,11 @@ func writeWorkflow(w *GithubWorkflow) {
 		return
 	}
 	data, _ := yaml.Marshal(w)
-	_ = generateFile(fmt.Sprintf(".github/workflows/%s.yml", w.Name), data)
+	_ = generateFile(workflowName(w.Name), data)
+}
+
+func workflowName(name string) string {
+	return fmt.Sprintf(".github/workflows/%s.yml", name)
 }
 
 func githubWorkflowForSync(name string, dockerfile string, tags ...string) *GithubWorkflow {
@@ -158,7 +162,10 @@ func githubWorkflowForSync(name string, dockerfile string, tags ...string) *Gith
 	w.Name = "zz-sync-" + name
 	w.On = Values{
 		"push": Values{
-			"paths": []string{dockerfile},
+			"paths": []string{
+				workflowName(w.Name),
+				dockerfile,
+			},
 		},
 	}
 
@@ -175,9 +182,9 @@ func githubWorkflowForSync(name string, dockerfile string, tags ...string) *Gith
 					"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
 				}),
 				Uses("").Do(`
-DOCKERFILE=Dockerfile.` + fullname(name, tags) + `
+DOCKERFILE=sync/Dockerfile.` + fullname(name, tags) + `
 TAG=$(cat ${DOCKERFILE} | grep "^FROM " | sed -e "s/FROM //g" | head -1)
-make -f ./common/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
+make -f ./build/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
 `),
 			},
 		},
