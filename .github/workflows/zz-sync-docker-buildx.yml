@@ -17,4 +17,7 @@ jobs:
         password: ${{ secrets.DOCKER_MIRROR_PASSWORD }}
         registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
         username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
-    - run: cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=docker-buildx,arm64
+    - run: |-
+        DOCKERFILE=Dockerfile.docker-buildx,arm64
+        TAG=$(cat ${DOCKERFILE} | grep "^FROM " | sed -e "s/FROM //g" | head -1)
+        make -f ./common/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}

@@ -5,12 +5,4 @@ NAME = docker-buildx
 TARGET_PLATFORM = linux/arm64,linux/amd64
 
 build:
-	docker buildx build \
-		--push \
-		--platform $(TARGET_PLATFORM) \
-		--build-arg VERSION=$(VERSION) \
-		--tag $(HUB)/$(NAME):$(TAG) \
-		--file Dockerfile.$(NAME) .
-
-version:
-	@echo "VERSION: $(VERSION)"
+	$(MAKE) -f ../Makefile buildx TAGS=$(HUB)/$(NAME):$(TAG) BUILD_ARGS=VERSION=$(VERSION) DOCKERFILE=Dockerfile.$(NAME)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -23,16 +22,26 @@ func init() {
 	}
 }
 
-func main() {
+func cleanup() error {
 	files, err := glob(".github/workflows/*", "sync/Dockerfile.*")
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	for i := range files {
 		if err := os.Remove(files[i]); err != nil {
-			panic(err)
+			return err
 		}
+	}
+
+	return nil
+}
+
+func main() {
+	initMakefiles()
+
+	if err := cleanup(); err != nil {
+		panic(err)
 	}
 
 	projects, err := resolveProjects()
@@ -97,7 +106,7 @@ func generateWorkflowsForSync(projects Projects) {
 		for i := range p.Dockerfiles {
 			name, _ := nameAndTagsFromDockerfile(p.Dockerfiles[i])
 			dockerfile := fmt.Sprintf("sync/Dockerfile.%s,arm64", name)
-			_ = ioutil.WriteFile(dockerfile, []byte(fmt.Sprintf("FROM "+hub+"/%s:%s", name, p.Version)), os.ModePerm)
+			_ = generateFile(dockerfile, []byte(fmt.Sprintf("FROM "+hub+"/%s:%s", name, p.Version)))
 		}
 	})
 
@@ -133,16 +142,15 @@ updates:
 `, p.Name))
 	})
 
-	_ = ioutil.WriteFile(".github/dependabot.yml", buf.Bytes(), os.ModePerm)
+	_ = generateFile(".github/dependabot.yml", buf.Bytes())
 }
 
 func writeWorkflow(w *GithubWorkflow) {
 	if w == nil {
 		return
 	}
-
 	data, _ := yaml.Marshal(w)
-	_ = ioutil.WriteFile(fmt.Sprintf(".github/workflows/%s.yml", w.Name), data, os.ModePerm)
+	_ = generateFile(fmt.Sprintf(".github/workflows/%s.yml", w.Name), data)
 }
 
 func githubWorkflowForSync(name string, dockerfile string, tags ...string) *GithubWorkflow {
@@ -166,7 +174,11 @@ func githubWorkflowForSync(name string, dockerfile string, tags ...string) *Gith
 					"username": "${{ secrets.DOCKER_MIRROR_USERNAME }}",
 					"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
 				}),
-				Uses("").Do(fmt.Sprintf(`cd sync && make sync HUB=${{ secrets.DOCKER_MIRROR_REGISTRY }} NAME=%s`, fullname(name, tags))),
+				Uses("").Do(`
+DOCKERFILE=Dockerfile.` + fullname(name, tags) + `
+TAG=$(cat ${DOCKERFILE} | grep "^FROM " | sed -e "s/FROM //g" | head -1)
+make -f ./common/Makefile build TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
+`),
 			},
 		},
 	}
