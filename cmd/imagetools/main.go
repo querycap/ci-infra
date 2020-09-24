@@ -56,8 +56,8 @@ BUILD_ARG_FLAGS = $(foreach v,$(BUILD_ARGS),$(shell echo "--build-arg $(v)"))
 buildx:
 	docker buildx build \
 		--push \
-		--cache-from type=local,src=/tmp/cache \
-		--cache-to type=local,dest=/tmp/cache \
+		--cache-from type=local,src=/tmp/.buildx-cache \
+		--cache-to type=local,dest=/tmp/.buildx-cache \
 		--platform $(TARGET_PLATFORM) \
 		$(BUILD_ARG_FLAGS) \
 		$(TAG_FLAGS) \
@@ -118,8 +118,9 @@ func generateWorkflows(projects Projects) {
 					JobSteps(
 						Step(StepUses("actions/checkout@v2")),
 						Step(StepUses("actions/cache@v2"), StepWith(map[string]string{
-							"key":  "${{ runner.os }}-" + name,
-							"path": "/tmp/cache",
+							"path":         "/tmp/.buildx-cache",
+							"key":          "${{ runner.os }}-buildx-${{ github.sha }}",
+							"restore-keys": "${{ runner.os }}-buildx-",
 						})),
 						Step(StepUses("docker/setup-qemu-action@v1")),
 						Step(StepUses("docker/setup-buildx-action@v1")),
