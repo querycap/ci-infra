@@ -2,7 +2,7 @@ name: gitlab-runner-gitlab-runner-helper
 "on":
   push:
     paths:
-    - .github/workflows/gitlab-runner.yml
+    - .github/workflows/gitlab-runner-gitlab-runner-helper.yml
     - build/gitlab-runner/Dockerfile.gitlab-runner-helper
     - build/gitlab-runner/Dockerfile.version
     - build/gitlab-runner/Makefile

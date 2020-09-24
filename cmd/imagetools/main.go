@@ -100,7 +100,7 @@ func generateWorkflows(projects Projects) {
 			w.On = Values{
 				"push": Values{
 					"paths": []string{
-						workflowFilename(p.Name),
+						workflowFilename(w.Name),
 						p.Dockerfiles[i],
 						p.VersionFile,
 						p.Makefile,
