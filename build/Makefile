@@ -10,6 +10,8 @@ BUILD_ARG_FLAGS = $(foreach v,$(BUILD_ARGS),$(shell echo "--build-arg $(v)"))
 buildx:
 	docker buildx build \
 		--push \
+		--cache-from type=local,src=/tmp/cache \
+		--cache-to type=local,dest=/tmp/cache \
 		--platform $(TARGET_PLATFORM) \
 		$(BUILD_ARG_FLAGS) \
 		$(TAG_FLAGS) \

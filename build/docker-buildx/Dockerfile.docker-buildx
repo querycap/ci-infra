@@ -2,7 +2,7 @@
 
 FROM golang:1.15 as builder
 
-ARG VERSION
+ARG VERSION=master
 RUN git clone --depth 1 -b ${VERSION} https://github.com/docker/buildx.git /go/src/github.com/docker/buildx
 WORKDIR /go/src/github.com/docker/buildx
 
