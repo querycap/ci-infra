@@ -37,8 +37,34 @@ func cleanup() error {
 	return nil
 }
 
+func initAll() {
+	_ = generateFile("./build/Dockerfile.sync", []byte(`
+ARG TAG
+FROM ${TAG}
+`))
+
+	_ = generateFile("./build/Makefile", []byte(`
+TAGS = latest    master
+BUILD_ARGS = VERSION=0.0.0 GOPROXY=https://goproxy.com,direct
+TARGET_PLATFORM = linux/arm64,linux/amd64
+DOCKERFILE = Dockerfile
+CONTEXT = .
+
+TAG_FLAGS = $(foreach v,$(TAGS),$(shell echo "--tag $(v)"))
+BUILD_ARG_FLAGS = $(foreach v,$(BUILD_ARGS),$(shell echo "--build-arg $(v)"))
+
+buildx:
+	docker buildx build \
+		--push \
+		--platform $(TARGET_PLATFORM) \
+		$(BUILD_ARG_FLAGS) \
+		$(TAG_FLAGS) \
+		--file $(DOCKERFILE) $(CONTEXT)
+`))
+}
+
 func main() {
-	initMakefiles()
+	initAll()
 
 	if err := cleanup(); err != nil {
 		panic(err)
@@ -53,7 +79,6 @@ func main() {
 	fmt.Println(string(data))
 
 	generateWorkflows(projects)
-	generateWorkflowsForSync(projects)
 	generateDependabot(projects)
 }
 
@@ -73,49 +98,70 @@ func generateWorkflows(projects Projects) {
 			w.On = Values{
 				"push": Values{
 					"paths": []string{
+						workflowFilename(p.Name),
 						p.Dockerfiles[i],
 						p.VersionFile,
+						p.Makefile,
 					},
 				},
 			}
 
-			w.Jobs = map[string]*WorkflowJob{}
+			dockerfileName := fullname(name, tags)
+			workingDir := filepath.Join(basePathForBuild, p.Name)
 
-			w.Jobs[name] = &WorkflowJob{
-				RunsOn: runsOn(tags),
-				Steps: []*WorkflowStep{
-					Uses("actions/checkout@v2"),
-					Uses("docker/setup-qemu-action@v1"),
-					Uses("docker/setup-buildx-action@v1"),
-					Uses("docker/login-action@v1").With(map[string]string{
-						"username": "${{ secrets.DOCKER_USERNAME }}",
-						"password": "${{ secrets.DOCKER_PASSWORD }}",
-					}),
-					Uses("").If("github.ref == 'refs/heads/master'").Named("Versioned Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s", basePathForBuild, p.Name, hub, fullname(name, tags))),
-					Uses("").If("github.ref != 'refs/heads/master'").Named("Temp Build").Do(fmt.Sprintf("cd %s/%s && make build HUB=%s NAME=%s TAG=temp-${{ github.sha }}", basePathForBuild, p.Name, hub, fullname(name, tags))),
-				},
+			w.Jobs = map[string]*WorkflowJob{
+				name: Job(
+					JobDefaultsWorkingDirectory(workingDir),
+					JobRunsOn(tags...),
+					JobSteps(
+						Step(StepUses("actions/checkout@v2")),
+						Step(StepUses("docker/setup-qemu-action@v1")),
+						Step(StepUses("docker/setup-buildx-action@v1")),
+						Step(StepUses("docker/login-action@v1"), StepWith(map[string]string{
+							"username": "${{ secrets.DOCKER_USERNAME }}",
+							"password": "${{ secrets.DOCKER_PASSWORD }}",
+						})),
+						Step(
+							StepName("Versioned Build"),
+							StepIf("github.ref == 'refs/heads/master'"),
+							StepRun(fmt.Sprintf(`
+make build HUB=%s NAME=%s
+`, hub, dockerfileName))),
+						Step(
+							StepName("Temp Build"),
+							StepIf("github.ref != 'refs/heads/master'"),
+							StepRun(fmt.Sprintf(`
+make build TAG=temp-${{ github.sha }} HUB=%s NAME=%s
+`, hub, dockerfileName)),
+						),
+					),
+				),
+				"sync-" + name: Job(
+					JobDefaultsWorkingDirectory(workingDir),
+					JobRunsOn("arm64"),
+					JobNeeds(name),
+					JobIf("github.ref == 'refs/heads/master'"),
+					JobSteps(
+						Step(StepUses("actions/checkout@v2")),
+						Step(StepUses("docker/setup-qemu-action@v1")),
+						Step(StepUses("docker/setup-buildx-action@v1")),
+						Step(StepUses("docker/login-action@v1"), StepWith(map[string]string{
+							"registry": "${{ secrets.DOCKER_MIRROR_REGISTRY }}",
+							"username": "${{ secrets.DOCKER_MIRROR_USERNAME }}",
+							"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
+						})),
+						Step(StepRun(fmt.Sprintf(`
+export TAG=$(make image HUB=%s NAME=%s)
+
+docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .
+`, hub, dockerfileName))),
+					),
+				),
 			}
 
 			writeWorkflow(w)
 		}
 	})
-}
-
-func generateWorkflowsForSync(projects Projects) {
-	projects.Range(func(p *Project) {
-		for i := range p.Dockerfiles {
-			name, _ := nameAndTagsFromDockerfile(p.Dockerfiles[i])
-			dockerfile := fmt.Sprintf("sync/Dockerfile.%s,arm64", name)
-			_ = generateFile(dockerfile, []byte(fmt.Sprintf("FROM "+hub+"/%s:%s", name, p.Version)))
-		}
-	})
-
-	files, _ := filepath.Glob("sync/Dockerfile.*")
-
-	for i := range files {
-		name, tags := nameAndTagsFromDockerfile(files[i])
-		writeWorkflow(githubWorkflowForSync(name, files[i], tags...))
-	}
 }
 
 func generateDependabot(projects Projects) {
@@ -124,11 +170,6 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "daily"
-
-  - package-ecosystem: "docker"
-    directory: "/sync"
     schedule:
       interval: "daily"
 `)
@@ -150,54 +191,11 @@ func writeWorkflow(w *GithubWorkflow) {
 		return
 	}
 	data, _ := yaml.Marshal(w)
-	_ = generateFile(workflowName(w.Name), data)
+	_ = generateFile(workflowFilename(w.Name), data)
 }
 
-func workflowName(name string) string {
+func workflowFilename(name string) string {
 	return fmt.Sprintf(".github/workflows/%s.yml", name)
-}
-
-func githubWorkflowForSync(name string, dockerfile string, tags ...string) *GithubWorkflow {
-	w := &GithubWorkflow{}
-	w.Name = "zz-sync-" + name
-	w.On = Values{
-		"push": Values{
-			"paths": []string{
-				workflowName(w.Name),
-				dockerfile,
-			},
-		},
-	}
-
-	w.Jobs = map[string]*WorkflowJob{
-		"sync": {
-			RunsOn: runsOn(tags),
-			Steps: []*WorkflowStep{
-				Uses("actions/checkout@v2"),
-				Uses("docker/setup-qemu-action@v1"),
-				Uses("docker/setup-buildx-action@v1"),
-				Uses("docker/login-action@v1").With(map[string]string{
-					"registry": "${{ secrets.DOCKER_MIRROR_REGISTRY }}",
-					"username": "${{ secrets.DOCKER_MIRROR_USERNAME }}",
-					"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
-				}),
-				Uses("").Do(`
-DOCKERFILE=sync/Dockerfile.` + fullname(name, tags) + `
-TAG=$(cat ${DOCKERFILE} | grep "^FROM " | sed -e "s/FROM //g" | head -1)
-make -f ./build/Makefile buildx TAGS=${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} DOCKERFILE=${DOCKERFILE}
-`),
-			},
-		},
-	}
-
-	return w
-}
-
-func runsOn(tags []string) []string {
-	if len(tags) == 0 {
-		return []string{"ubuntu-latest"}
-	}
-	return append([]string{"self-hosted"}, tags...)
 }
 
 func fullname(name string, flags []string) string {

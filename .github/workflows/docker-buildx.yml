@@ -2,12 +2,17 @@ name: docker-buildx
 "on":
   push:
     paths:
+    - .github/workflows/docker-buildx.yml
     - build/docker-buildx/Dockerfile.docker-buildx
     - build/docker-buildx/.version
+    - build/docker-buildx/Makefile
 jobs:
   docker-buildx:
     runs-on:
     - ubuntu-latest
+    defaults:
+      run:
+        working-directory: build/docker-buildx
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -18,7 +23,30 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
     - name: Versioned Build
       if: github.ref == 'refs/heads/master'
-      run: cd build/docker-buildx && make build HUB=querycap NAME=docker-buildx
+      run: make build HUB=querycap NAME=docker-buildx
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/docker-buildx && make build HUB=querycap NAME=docker-buildx TAG=temp-${{ github.sha }}
+      run: make build TAG=temp-${{ github.sha }} HUB=querycap NAME=docker-buildx
+  sync-docker-buildx:
+    runs-on:
+    - self-hosted
+    - arm64
+    needs:
+    - docker-buildx
+    if: github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: build/docker-buildx
+    steps:
+    - uses: actions/checkout@v2
+    - uses: docker/setup-qemu-action@v1
+    - uses: docker/setup-buildx-action@v1
+    - uses: docker/login-action@v1
+      with:
+        password: ${{ secrets.DOCKER_MIRROR_PASSWORD }}
+        registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
+        username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
+    - run: |-
+        export TAG=$(make image HUB=querycap NAME=docker-buildx)
+
+        docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .

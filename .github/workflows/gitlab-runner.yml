@@ -2,12 +2,17 @@ name: gitlab-runner
 "on":
   push:
     paths:
+    - .github/workflows/gitlab-runner.yml
     - build/gitlab-runner/Dockerfile.gitlab-runner
     - build/gitlab-runner/Dockerfile.version
+    - build/gitlab-runner/Makefile
 jobs:
   gitlab-runner:
     runs-on:
     - ubuntu-latest
+    defaults:
+      run:
+        working-directory: build/gitlab-runner
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -18,7 +23,30 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
     - name: Versioned Build
       if: github.ref == 'refs/heads/master'
-      run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner
+      run: make build HUB=querycap NAME=gitlab-runner
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/gitlab-runner && make build HUB=querycap NAME=gitlab-runner TAG=temp-${{ github.sha }}
+      run: make build TAG=temp-${{ github.sha }} HUB=querycap NAME=gitlab-runner
+  sync-gitlab-runner:
+    runs-on:
+    - self-hosted
+    - arm64
+    needs:
+    - gitlab-runner
+    if: github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: build/gitlab-runner
+    steps:
+    - uses: actions/checkout@v2
+    - uses: docker/setup-qemu-action@v1
+    - uses: docker/setup-buildx-action@v1
+    - uses: docker/login-action@v1
+      with:
+        password: ${{ secrets.DOCKER_MIRROR_PASSWORD }}
+        registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
+        username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
+    - run: |-
+        export TAG=$(make image HUB=querycap NAME=gitlab-runner)
+
+        docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .

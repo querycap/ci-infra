@@ -1,1 +1,0 @@
-FROM querycap/gitlab-runner-helper:v13.4.0

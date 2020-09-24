@@ -20,7 +20,7 @@ func glob(patterns ...string) (files []string, err error) {
 }
 
 func resolveProjects() (Projects, error) {
-	dockerfiles, err := glob("./build/*/Dockerfile.*", "./build/*/.version")
+	dockerfiles, err := glob("./build/*/Dockerfile.*", "./build/*/.version", "./build/*/Makefile")
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +40,8 @@ func resolveProjects() (Projects, error) {
 		}
 
 		switch dockerfileName {
+		case "Makefile":
+			p.Makefile = dockerfiles[i]
 		case ".version", "Dockerfile.version":
 			data, _ := ioutil.ReadFile(dockerfiles[i])
 			p.Version = getVersionFromDockerfileVersionOrDotVersion(data)
@@ -73,6 +75,7 @@ type Project struct {
 	Name        string
 	Version     string
 	VersionFile string
+	Makefile    string
 	Dockerfiles []string
 }
 

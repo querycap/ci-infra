@@ -6,11 +6,6 @@ updates:
       interval: "daily"
 
   - package-ecosystem: "docker"
-    directory: "/sync"
-    schedule:
-      interval: "daily"
-
-  - package-ecosystem: "docker"
     directory: "/build/buildkit"
     schedule:
       interval: "daily"

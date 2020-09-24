@@ -2,12 +2,17 @@ name: dockerfile
 "on":
   push:
     paths:
+    - .github/workflows/dockerfile.yml
     - build/dockerfile/Dockerfile.dockerfile
     - build/dockerfile/Dockerfile.version
+    - build/dockerfile/Makefile
 jobs:
   dockerfile:
     runs-on:
     - ubuntu-latest
+    defaults:
+      run:
+        working-directory: build/dockerfile
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -18,7 +23,30 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
     - name: Versioned Build
       if: github.ref == 'refs/heads/master'
-      run: cd build/dockerfile && make build HUB=querycap NAME=dockerfile
+      run: make build HUB=querycap NAME=dockerfile
     - name: Temp Build
       if: github.ref != 'refs/heads/master'
-      run: cd build/dockerfile && make build HUB=querycap NAME=dockerfile TAG=temp-${{ github.sha }}
+      run: make build TAG=temp-${{ github.sha }} HUB=querycap NAME=dockerfile
+  sync-dockerfile:
+    runs-on:
+    - self-hosted
+    - arm64
+    needs:
+    - dockerfile
+    if: github.ref == 'refs/heads/master'
+    defaults:
+      run:
+        working-directory: build/dockerfile
+    steps:
+    - uses: actions/checkout@v2
+    - uses: docker/setup-qemu-action@v1
+    - uses: docker/setup-buildx-action@v1
+    - uses: docker/login-action@v1
+      with:
+        password: ${{ secrets.DOCKER_MIRROR_PASSWORD }}
+        registry: ${{ secrets.DOCKER_MIRROR_REGISTRY }}
+        username: ${{ secrets.DOCKER_MIRROR_USERNAME }}
+    - run: |-
+        export TAG=$(make image HUB=querycap NAME=dockerfile)
+
+        docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .
