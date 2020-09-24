@@ -1,1 +1,1 @@
-FROM moby/buildkit:master
+FROM moby/buildkit:buildx-stable-1
