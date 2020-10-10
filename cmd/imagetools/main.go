@@ -158,9 +158,10 @@ make build TAG=temp-${{ github.sha }} HUB=%s NAME=%s
 							"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
 						})),
 						Step(StepRun(fmt.Sprintf(`
-export TAG=$(make image HUB=%s NAME=%s)
-
-docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .
+for TAG in $(make image HUB=%s NAME=%s)
+do
+    docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .
+done
 `, hub, dockerfileName))),
 					),
 				),
