@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -37,35 +38,7 @@ func cleanup() error {
 	return nil
 }
 
-func initAll() {
-	_ = generateFile("./build/Dockerfile.sync", []byte(`
-ARG TAG
-FROM ${TAG}
-`))
-
-	_ = generateFile("./build/Makefile", []byte(`
-TAGS = latest    master
-BUILD_ARGS = VERSION=0.0.0 GOPROXY=https://goproxy.com,direct
-TARGET_PLATFORM = linux/arm64,linux/amd64
-DOCKERFILE = Dockerfile
-CONTEXT = .
-
-TAG_FLAGS = $(foreach v,$(TAGS),$(shell echo "--tag $(v)"))
-BUILD_ARG_FLAGS = $(foreach v,$(BUILD_ARGS),$(shell echo "--build-arg $(v)"))
-
-buildx:
-	docker buildx build \
-		--push \
-		--platform $(TARGET_PLATFORM) \
-		$(BUILD_ARG_FLAGS) \
-		$(TAG_FLAGS) \
-		--file $(DOCKERFILE) $(CONTEXT)
-`))
-}
-
 func main() {
-	initAll()
-
 	if err := cleanup(); err != nil {
 		panic(err)
 	}
@@ -106,62 +79,76 @@ func generateWorkflows(projects Projects) {
 				},
 			}
 
-			dockerfileName := fullname(name, tags)
 			workingDir := filepath.Join(basePathForBuild, p.Name)
+
+			steps := []*WorkflowStep{
+				Step(StepUses("actions/checkout@v2")),
+				Step(StepUses("docker/setup-qemu-action@v1")),
+				Step(StepUses("docker/setup-buildx-action@v1")),
+			}
+
+			imageTags := make([]string, 0)
+
+			for _, h := range strings.Split(hub, " ") {
+				if h != "" {
+					imageTags = append(imageTags, fmt.Sprintf(`%s/${{ steps.prepare.outputs.image }}`, h))
+
+					registry := strings.Split(h, "/")[0]
+
+					hubLogin := map[string]string{
+						"registry": registry,
+					}
+
+					name := strings.ToUpper(strings.Split(registry, ".")[0])
+
+					switch registry {
+					case "ghcr.io":
+						hubLogin["username"] = "${{ github.repository_owner }}"
+						hubLogin["password"] = "${{ secrets.CR_PAT }}"
+					default:
+						hubLogin["username"] = "${{ secrets." + name + "_USERNAME }}"
+						hubLogin["password"] = "${{ secrets." + name + "_PASSWORD }}"
+					}
+
+					steps = append(steps, Step(StepName("Login "+registry), StepUses("docker/login-action@v1"), StepWith(hubLogin)))
+				}
+			}
+
+			steps = append(steps,
+				Step(
+					StepName("prepare"),
+					StepID("prepare"),
+					StepRun(`
+if [[ ${{ github.ref }} == "refs/heads/master" ]]; then
+  make prepare NAME=`+name+`
+else
+  make prepare NAME=`+name+` TAG=temp-${{ github.sha }}
+fi 
+`),
+				),
+				Step(
+					StepName("Push"),
+					StepUses("docker/build-push-action@v2"),
+					StepWith(map[string]string{
+						"context":    workingDir,
+						"file":       workingDir + "/Dockerfile." + name,
+						"push":       "${{ github.event_name != 'pull_request' }}",
+						"build-args": "${{ steps.prepare.outputs.build_args }}",
+						"labels": strings.Join([]string{
+							"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+							"org.opencontainers.image.revision=${{ github.sha }}",
+						}, "\n"),
+						"platforms": "linux/amd64,linux/arm64",
+						"tags":      strings.Join(imageTags, "\n"),
+					}),
+				),
+			)
 
 			w.Jobs = map[string]*WorkflowJob{
 				name: Job(
 					JobDefaultsWorkingDirectory(workingDir),
 					JobRunsOn(tags...),
-					JobSteps(
-						Step(StepUses("actions/checkout@v2")),
-						Step(StepUses("actions/cache@v2"), StepWith(map[string]string{
-							"path":         "/tmp/.buildx-cache",
-							"key":          "${{ runner.os }}-buildx-${{ github.sha }}",
-							"restore-keys": "${{ runner.os }}-buildx-",
-						})),
-						Step(StepUses("docker/setup-qemu-action@v1")),
-						Step(StepUses("docker/setup-buildx-action@v1")),
-						Step(StepUses("docker/login-action@v1"), StepWith(map[string]string{
-							"username": "${{ secrets.DOCKER_USERNAME }}",
-							"password": "${{ secrets.DOCKER_PASSWORD }}",
-						})),
-						Step(
-							StepName("Versioned Build"),
-							StepIf("github.ref == 'refs/heads/master'"),
-							StepRun(fmt.Sprintf(`
-make build HUB=%s NAME=%s
-`, hub, dockerfileName))),
-						Step(
-							StepName("Temp Build"),
-							StepIf("github.ref != 'refs/heads/master'"),
-							StepRun(fmt.Sprintf(`
-make build TAG=temp-${{ github.sha }} HUB=%s NAME=%s
-`, hub, dockerfileName)),
-						),
-					),
-				),
-				"sync-" + name: Job(
-					JobDefaultsWorkingDirectory(workingDir),
-					JobRunsOn("arm64"),
-					JobNeeds(name),
-					JobIf("github.ref == 'refs/heads/master'"),
-					JobSteps(
-						Step(StepUses("actions/checkout@v2")),
-						Step(StepUses("docker/setup-qemu-action@v1")),
-						Step(StepUses("docker/setup-buildx-action@v1")),
-						Step(StepUses("docker/login-action@v1"), StepWith(map[string]string{
-							"registry": "${{ secrets.DOCKER_MIRROR_REGISTRY }}",
-							"username": "${{ secrets.DOCKER_MIRROR_USERNAME }}",
-							"password": "${{ secrets.DOCKER_MIRROR_PASSWORD }}",
-						})),
-						Step(StepRun(fmt.Sprintf(`
-for TAG in $(make image HUB=%s NAME=%s)
-do
-    docker buildx build --push --platform linux/arm64,linux/amd64 --tag ${{ secrets.DOCKER_MIRROR_REGISTRY }}/${TAG} --build-arg TAG=${TAG} --file ../Dockerfile.sync .
-done
-`, hub, dockerfileName))),
-					),
+					JobSteps(steps...),
 				),
 			}
 
@@ -202,15 +189,4 @@ func writeWorkflow(w *GithubWorkflow) {
 
 func workflowFilename(name string) string {
 	return fmt.Sprintf(".github/workflows/%s.yml", name)
-}
-
-func fullname(name string, flags []string) string {
-	b := bytes.NewBufferString(name)
-
-	for i := range flags {
-		b.WriteByte(',')
-		b.WriteString(flags[i])
-	}
-
-	return b.String()
 }

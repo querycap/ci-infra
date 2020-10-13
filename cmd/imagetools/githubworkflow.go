@@ -24,20 +24,6 @@ func Job(optFuncs ...JobOptionFunc) *WorkflowJob {
 	return s
 }
 
-func JobIf(cond string) JobOptionFunc {
-	return func(s *WorkflowJob) {
-		s.If = cond
-	}
-}
-
-func JobNeeds(needs ...string) JobOptionFunc {
-	return func(s *WorkflowJob) {
-		if len(needs) > 0 {
-			s.Needs = needs
-		}
-	}
-}
-
 func JobRunsOn(tags ...string) JobOptionFunc {
 	return func(s *WorkflowJob) {
 		if len(tags) == 0 {
@@ -111,9 +97,9 @@ func StepName(name string) StepOptionFunc {
 	}
 }
 
-func StepIf(cond string) StepOptionFunc {
+func StepID(id string) StepOptionFunc {
 	return func(s *WorkflowStep) {
-		s.If = cond
+		s.ID = id
 	}
 }
 

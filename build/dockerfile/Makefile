@@ -1,11 +1,7 @@
 VERSION = $(shell cat Dockerfile.version | grep "^FROM " | sed -e "s/FROM.*://g" )
-TAG = $(VERSION)
-HUB = querycap
 NAME = docker
-IMAGE = $(HUB)/$(NAME):$(TAG)
+TAG = $(VERSION)
 
-image:
-	@echo $(IMAGE)
-
-build:
-	$(MAKE) -f ../Makefile buildx TAGS=$(IMAGE) BUILD_ARGS=VERSION=$(VERSION) DOCKERFILE=Dockerfile.$(NAME)
+prepare:
+	echo ::set-output name=image::$(NAME):$(TAG)
+	echo ::set-output name=build_args::VERSION=$(VERSION)

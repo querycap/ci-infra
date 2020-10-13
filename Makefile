@@ -1,2 +1,4 @@
+HUB=ghcr.io/querycap/ci-infra docker.io/querycap
+
 gen:
-	HUB=querycap go run ./cmd/imagetools
+	HUB="$(HUB)" go run ./cmd/imagetools
