@@ -13,6 +13,12 @@ jobs:
     defaults:
       run:
         working-directory: build/docker
+    strategy:
+      matrix:
+        SUFFIX:
+        - ""
+        - -dind
+        - -git
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -31,12 +37,14 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
     - id: prepare
       name: prepare
+      env:
+        NAME: docker
+        SUFFIX: ${{ matrix.SUFFIX }}
       run: |-
-        if [[ ${{ github.ref }} == "refs/heads/master" ]]; then
-          make prepare NAME=docker
-        else
-          make prepare NAME=docker TAG=temp-${{ github.sha }}
+        if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
+          export TAG=temp-${{ github.sha }}
         fi
+        make prepare
     - uses: docker/build-push-action@v2
       name: Push
       with:

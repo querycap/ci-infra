@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
+	. "github.com/querycap/ci-infra/pkg/workflow"
 	"gopkg.in/yaml.v2"
 )
 
@@ -24,7 +26,7 @@ func init() {
 }
 
 func cleanup() error {
-	files, err := glob(".github/workflows/*", "sync/Dockerfile.*")
+	files, err := Glob(".github/workflows/*")
 	if err != nil {
 		return err
 	}
@@ -43,7 +45,7 @@ func main() {
 		panic(err)
 	}
 
-	projects, err := resolveProjects()
+	projects, err := ResolveProjects()
 	if err != nil {
 		panic(err)
 	}
@@ -58,7 +60,7 @@ func main() {
 func generateWorkflows(projects Projects) {
 	projects.Range(func(p *Project) {
 		for i := range p.Dockerfiles {
-			name, tags := nameAndTagsFromDockerfile(p.Dockerfiles[i])
+			name := nameDockerfile(p.Dockerfiles[i])
 
 			w := &GithubWorkflow{}
 
@@ -79,6 +81,18 @@ func generateWorkflows(projects Projects) {
 				},
 			}
 
+			env := map[string]string{}
+
+			if len(p.Workflow.Schedule) > 0 {
+				w.On["schedule"] = p.Workflow.Schedule
+			}
+
+			if len(p.Workflow.Matrix) > 0 {
+				for k := range p.Workflow.Matrix {
+					env[k] = "${{ matrix." + k + " }}"
+				}
+			}
+
 			workingDir := filepath.Join(basePathForBuild, p.Name)
 
 			steps := []*WorkflowStep{
@@ -87,67 +101,32 @@ func generateWorkflows(projects Projects) {
 				Step(StepUses("docker/setup-buildx-action@v1")),
 			}
 
-			imageTags := make([]string, 0)
+			dockerLoginSteps, dockerPushStep := resolveDockerSteps(workingDir, name)
 
-			for _, h := range strings.Split(hub, " ") {
-				if h != "" {
-					imageTags = append(imageTags, fmt.Sprintf(`%s/${{ steps.prepare.outputs.image }}`, h))
-
-					registry := strings.Split(h, "/")[0]
-
-					hubLogin := map[string]string{
-						"registry": registry,
-					}
-
-					name := strings.ToUpper(strings.Split(registry, ".")[0])
-
-					switch registry {
-					case "ghcr.io":
-						hubLogin["username"] = "${{ github.repository_owner }}"
-						hubLogin["password"] = "${{ secrets.CR_PAT }}"
-					default:
-						hubLogin["username"] = "${{ secrets." + name + "_USERNAME }}"
-						hubLogin["password"] = "${{ secrets." + name + "_PASSWORD }}"
-					}
-
-					steps = append(steps, Step(StepName("Login "+registry), StepUses("docker/login-action@v1"), StepWith(hubLogin)))
-				}
-			}
+			steps = append(steps, dockerLoginSteps...)
 
 			steps = append(steps,
 				Step(
 					StepName("prepare"),
 					StepID("prepare"),
+					StepEnv(env, map[string]string{
+						"NAME": name,
+					}),
 					StepRun(`
-if [[ ${{ github.ref }} == "refs/heads/master" ]]; then
-  make prepare NAME=`+name+`
-else
-  make prepare NAME=`+name+` TAG=temp-${{ github.sha }}
-fi 
+if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
+  export TAG=temp-${{ github.sha }}
+fi
+make prepare
 `),
 				),
-				Step(
-					StepName("Push"),
-					StepUses("docker/build-push-action@v2"),
-					StepWith(map[string]string{
-						"context":    workingDir,
-						"file":       workingDir + "/Dockerfile." + name,
-						"push":       "${{ github.event_name != 'pull_request' }}",
-						"build-args": "${{ steps.prepare.outputs.build_args }}",
-						"labels": strings.Join([]string{
-							"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
-							"org.opencontainers.image.revision=${{ github.sha }}",
-						}, "\n"),
-						"platforms": "linux/amd64,linux/arm64",
-						"tags":      strings.Join(imageTags, "\n"),
-					}),
-				),
+				dockerPushStep,
 			)
 
 			w.Jobs = map[string]*WorkflowJob{
 				name: Job(
 					JobDefaultsWorkingDirectory(workingDir),
-					JobRunsOn(tags...),
+					JobStrategyMatrix(p.Workflow.Matrix),
+					JobRunsOn(),
 					JobSteps(steps...),
 				),
 			}
@@ -189,4 +168,63 @@ func writeWorkflow(w *GithubWorkflow) {
 
 func workflowFilename(name string) string {
 	return fmt.Sprintf(".github/workflows/%s.yml", name)
+}
+
+func nameDockerfile(dockerfile string) string {
+	return strings.Split(dockerfile, ".")[1]
+}
+
+func generateFile(filename string, data []byte) error {
+	data = append(bytes.TrimSpace(data), '\n')
+	if err := os.MkdirAll(filepath.Dir(filename), os.ModePerm); err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filename, data, os.ModePerm)
+}
+
+func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *WorkflowStep) {
+	imageTags := make([]string, 0)
+	steps := make([]*WorkflowStep, 0)
+
+	for _, h := range strings.Split(hub, " ") {
+		if h != "" {
+			imageTags = append(imageTags, fmt.Sprintf(`%s/${{ steps.prepare.outputs.image }}`, h))
+
+			registry := strings.Split(h, "/")[0]
+
+			hubLogin := map[string]string{
+				"registry": registry,
+			}
+
+			name := strings.ToUpper(strings.Split(registry, ".")[0])
+
+			switch registry {
+			case "ghcr.io":
+				hubLogin["username"] = "${{ github.repository_owner }}"
+				hubLogin["password"] = "${{ secrets.CR_PAT }}"
+			default:
+				hubLogin["username"] = "${{ secrets." + name + "_USERNAME }}"
+				hubLogin["password"] = "${{ secrets." + name + "_PASSWORD }}"
+			}
+
+			steps = append(steps, Step(StepName("Login "+registry), StepUses("docker/login-action@v1"), StepWith(hubLogin)))
+		}
+	}
+
+	return steps, Step(
+		StepName("Push"),
+		StepUses("docker/build-push-action@v2"),
+		StepWith(map[string]string{
+			"context":    workingDir,
+			"file":       workingDir + "/Dockerfile." + name,
+			"push":       "${{ github.event_name != 'pull_request' }}",
+			"build-args": "${{ steps.prepare.outputs.build_args }}",
+			"labels": strings.Join([]string{
+				"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+				"org.opencontainers.image.revision=${{ github.sha }}",
+			}, "\n"),
+			"platforms": "linux/amd64,linux/arm64",
+			"tags":      strings.Join(imageTags, "\n"),
+		}),
+	)
 }

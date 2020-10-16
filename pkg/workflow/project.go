@@ -1,4 +1,4 @@
-package main
+package workflow
 
 import (
 	"io/ioutil"
@@ -6,9 +6,11 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v2"
 )
 
-func glob(patterns ...string) (files []string, err error) {
+func Glob(patterns ...string) (files []string, err error) {
 	for i := range patterns {
 		matched, err := filepath.Glob(patterns[i])
 		if err != nil {
@@ -19,8 +21,13 @@ func glob(patterns ...string) (files []string, err error) {
 	return
 }
 
-func resolveProjects() (Projects, error) {
-	dockerfiles, err := glob("./build/*/Dockerfile.*", "./build/*/.version", "./build/*/Makefile")
+func ResolveProjects() (Projects, error) {
+	dockerfiles, err := Glob(
+		"./build/*/Dockerfile.*",
+		"./build/*/.version",
+		"./build/*/Makefile",
+		"./build/*/workflow.yml",
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +53,9 @@ func resolveProjects() (Projects, error) {
 			data, _ := ioutil.ReadFile(dockerfiles[i])
 			p.Version = getVersionFromDockerfileVersionOrDotVersion(data)
 			p.VersionFile = dockerfiles[i]
+		case "workflow.yml":
+			data, _ := ioutil.ReadFile(dockerfiles[i])
+			_ = yaml.Unmarshal(data, &p.Workflow)
 		default:
 			p.Dockerfiles = append(p.Dockerfiles, dockerfiles[i])
 		}
@@ -71,9 +81,19 @@ func (projects Projects) Range(fn func(p *Project)) {
 	}
 }
 
+type Schedule struct {
+	Cron string `yaml:"cron"`
+}
+
+type Workflow struct {
+	Schedule []Schedule          `yaml:"schedule,omitempty"`
+	Matrix   map[string][]string `yaml:"matrix,omitempty"`
+}
+
 type Project struct {
 	Name        string
 	Version     string
+	Workflow    Workflow `yaml:",omitempty"`
 	VersionFile string
 	Makefile    string
 	Dockerfiles []string
