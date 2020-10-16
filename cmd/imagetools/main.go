@@ -98,7 +98,9 @@ func generateWorkflows(projects Projects) {
 			steps := []*WorkflowStep{
 				Step(StepUses("actions/checkout@v2")),
 				Step(StepUses("docker/setup-qemu-action@v1")),
-				Step(StepUses("docker/setup-buildx-action@v1")),
+				Step(StepUses("docker/setup-buildx-action@v1"), StepWith(map[string]string{
+					"driver-opts": "network=host",
+				})),
 			}
 
 			dockerLoginSteps, dockerPushStep := resolveDockerSteps(workingDir, name)
@@ -124,6 +126,10 @@ make prepare
 
 			w.Jobs = map[string]*WorkflowJob{
 				name: Job(
+					JobService("registry", WorkflowService{
+						Image: "registry:2",
+						Ports: []string{"5000:5000"},
+					}),
 					JobDefaultsWorkingDirectory(workingDir),
 					JobStrategyMatrix(p.Workflow.Matrix),
 					JobRunsOn(),

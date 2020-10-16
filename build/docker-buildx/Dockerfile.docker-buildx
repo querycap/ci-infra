@@ -1,12 +1,15 @@
 # syntax = docker/dockerfile:experimental
 
+ARG VERSION=master
+FROM localhost:5000/src:${VERSION} as src
+
 FROM golang:1.15 as builder
 
-ARG VERSION=master
-RUN git clone --depth 1 -b ${VERSION} https://github.com/docker/buildx.git /go/src/github.com/docker/buildx
-WORKDIR /go/src/github.com/docker/buildx
+COPY --from=src /go/src /go/src
 
-RUN --mount=type=cache,id=gomod,target=/go/src/mod \
+WORKDIR /go/src/
+
+RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
     CGO_ENABLED=0 go build -o /go/bin/docker-buildx ./cmd/buildx
 
 FROM docker

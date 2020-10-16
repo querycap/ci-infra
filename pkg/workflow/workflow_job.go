@@ -1,11 +1,17 @@
 package workflow
 
 type WorkflowJob struct {
-	RunsOn   []string             `yaml:"runs-on,omitempty"`
-	Needs    []string             `yaml:"needs,omitempty"`
-	Defaults *WorkflowJobDefaults `yaml:"defaults,omitempty"`
-	Strategy *WorkflowJobStrategy `yaml:"strategy,omitempty"`
-	Steps    []*WorkflowStep      `steps:"steps,omitempty"`
+	RunsOn   []string                   `yaml:"runs-on,omitempty"`
+	Needs    []string                   `yaml:"needs,omitempty"`
+	Services map[string]WorkflowService `yaml:"services,omitempty"`
+	Defaults *WorkflowJobDefaults       `yaml:"defaults,omitempty"`
+	Strategy *WorkflowJobStrategy       `yaml:"strategy,omitempty"`
+	Steps    []*WorkflowStep            `yaml:"steps,omitempty"`
+}
+
+type WorkflowService struct {
+	Image string   `yaml:"image,omitempty"`
+	Ports []string `yaml:"ports,omitempty"`
 }
 
 type WorkflowJobDefaults struct {
@@ -66,5 +72,14 @@ func JobStrategyMatrix(matrix map[string][]string) JobOptionFunc {
 			s.Strategy = &WorkflowJobStrategy{}
 		}
 		s.Strategy.Matrix = matrix
+	}
+}
+
+func JobService(name string, svc WorkflowService) JobOptionFunc {
+	return func(s *WorkflowJob) {
+		if s.Services == nil {
+			s.Services = map[string]WorkflowService{}
+		}
+		s.Services[name] = svc
 	}
 }
