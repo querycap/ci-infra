@@ -37,13 +37,13 @@ func Job(optFuncs ...JobOptionFunc) *WorkflowJob {
 	return s
 }
 
-func JobRunsOn(tags ...string) JobOptionFunc {
+func JobRunsOn(runsOn ...string) JobOptionFunc {
 	return func(s *WorkflowJob) {
-		if len(tags) == 0 {
+		if len(runsOn) == 0 {
 			s.RunsOn = []string{"ubuntu-latest"}
 			return
 		}
-		s.RunsOn = append([]string{"self-hosted"}, tags...)
+		s.RunsOn = runsOn
 	}
 }
 

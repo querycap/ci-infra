@@ -103,7 +103,7 @@ func generateWorkflows(projects Projects) {
 				})),
 			}
 
-			dockerLoginSteps, dockerPushStep := resolveDockerSteps(workingDir, name)
+			dockerLoginSteps, dockerPushStep := resolveDockerSteps(workingDir, name, p.Workflow.Platforms)
 
 			steps = append(steps, dockerLoginSteps...)
 
@@ -132,7 +132,7 @@ make prepare
 					}),
 					JobDefaultsWorkingDirectory(workingDir),
 					JobStrategyMatrix(p.Workflow.Matrix),
-					JobRunsOn(),
+					JobRunsOn(p.Workflow.RunsOn...),
 					JobSteps(steps...),
 				),
 			}
@@ -188,9 +188,13 @@ func generateFile(filename string, data []byte) error {
 	return ioutil.WriteFile(filename, data, os.ModePerm)
 }
 
-func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *WorkflowStep) {
+func resolveDockerSteps(workingDir string, name string, platforms []string) ([]*WorkflowStep, *WorkflowStep) {
 	imageTags := make([]string, 0)
 	steps := make([]*WorkflowStep, 0)
+
+	if len(platforms) == 0 {
+		platforms = []string{"linux/amd64", "linux/arm64"}
+	}
 
 	for _, h := range strings.Split(hub, " ") {
 		if h != "" {
@@ -229,7 +233,7 @@ func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *Workf
 				"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
 				"org.opencontainers.image.revision=${{ github.sha }}",
 			}, "\n"),
-			"platforms": "linux/amd64,linux/arm64",
+			"platforms": strings.Join(platforms, ","),
 			"tags":      strings.Join(imageTags, "\n"),
 		}),
 	)

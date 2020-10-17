@@ -86,8 +86,10 @@ type Schedule struct {
 }
 
 type Workflow struct {
-	Schedule []Schedule          `yaml:"schedule,omitempty"`
-	Matrix   map[string][]string `yaml:"matrix,omitempty"`
+	RunsOn    []string            `yaml:"runs-on,omitempty"`
+	Platforms []string            `yaml:"platforms,omitempty"`
+	Schedule  []Schedule          `yaml:"schedule,omitempty"`
+	Matrix    map[string][]string `yaml:"matrix,omitempty"`
 }
 
 type Project struct {
