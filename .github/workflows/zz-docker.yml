@@ -1,15 +1,13 @@
-name: dockerfile
+name: docker
 "on":
   push:
     paths:
-    - .github/workflows/dockerfile.yml
-    - build/dockerfile/Dockerfile.dockerfile
-    - build/dockerfile/Dockerfile.version
-    - build/dockerfile/Makefile
-  schedule:
-  - cron: 0 1 * * *
+    - .github/workflows/zz-docker.yml
+    - build/docker/Dockerfile.docker
+    - build/docker/Dockerfile.version
+    - build/docker/Makefile
 jobs:
-  dockerfile:
+  docker:
     runs-on:
     - ubuntu-latest
     services:
@@ -19,7 +17,13 @@ jobs:
         - 5000:5000
     defaults:
       run:
-        working-directory: build/dockerfile
+        working-directory: build/docker
+    strategy:
+      matrix:
+        SUFFIX:
+        - ""
+        - -dind
+        - -git
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -41,7 +45,8 @@ jobs:
     - id: prepare
       name: prepare
       env:
-        NAME: dockerfile
+        NAME: docker
+        SUFFIX: ${{ matrix.SUFFIX }}
       run: |-
         if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
           export TAG=temp-${{ github.sha }}
@@ -51,8 +56,8 @@ jobs:
       name: Push
       with:
         build-args: ${{ steps.prepare.outputs.build_args }}
-        context: build/dockerfile
-        file: build/dockerfile/Dockerfile.dockerfile
+        context: build/docker
+        file: build/docker/Dockerfile.docker
         labels: |-
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}

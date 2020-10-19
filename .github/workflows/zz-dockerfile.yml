@@ -1,13 +1,15 @@
-name: buildkit
+name: dockerfile
 "on":
   push:
     paths:
-    - .github/workflows/buildkit.yml
-    - build/buildkit/Dockerfile.buildkit
-    - build/buildkit/Dockerfile.version
-    - build/buildkit/Makefile
+    - .github/workflows/zz-dockerfile.yml
+    - build/dockerfile/Dockerfile.dockerfile
+    - build/dockerfile/Dockerfile.version
+    - build/dockerfile/Makefile
+  schedule:
+  - cron: 0 1 * * *
 jobs:
-  buildkit:
+  dockerfile:
     runs-on:
     - ubuntu-latest
     services:
@@ -17,7 +19,7 @@ jobs:
         - 5000:5000
     defaults:
       run:
-        working-directory: build/buildkit
+        working-directory: build/dockerfile
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -39,7 +41,7 @@ jobs:
     - id: prepare
       name: prepare
       env:
-        NAME: buildkit
+        NAME: dockerfile
       run: |-
         if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
           export TAG=temp-${{ github.sha }}
@@ -49,8 +51,8 @@ jobs:
       name: Push
       with:
         build-args: ${{ steps.prepare.outputs.build_args }}
-        context: build/buildkit
-        file: build/buildkit/Dockerfile.buildkit
+        context: build/dockerfile
+        file: build/dockerfile/Dockerfile.dockerfile
         labels: |-
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}

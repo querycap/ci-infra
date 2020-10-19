@@ -1,13 +1,13 @@
-name: docker-buildx
+name: buildkit
 "on":
   push:
     paths:
-    - .github/workflows/docker-buildx.yml
-    - build/docker-buildx/Dockerfile.docker-buildx
-    - build/docker-buildx/.version
-    - build/docker-buildx/Makefile
+    - .github/workflows/zz-buildkit.yml
+    - build/buildkit/Dockerfile.buildkit
+    - build/buildkit/Dockerfile.version
+    - build/buildkit/Makefile
 jobs:
-  docker-buildx:
+  buildkit:
     runs-on:
     - ubuntu-latest
     services:
@@ -17,7 +17,7 @@ jobs:
         - 5000:5000
     defaults:
       run:
-        working-directory: build/docker-buildx
+        working-directory: build/buildkit
     steps:
     - uses: actions/checkout@v2
     - uses: docker/setup-qemu-action@v1
@@ -39,7 +39,7 @@ jobs:
     - id: prepare
       name: prepare
       env:
-        NAME: docker-buildx
+        NAME: buildkit
       run: |-
         if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
           export TAG=temp-${{ github.sha }}
@@ -49,8 +49,8 @@ jobs:
       name: Push
       with:
         build-args: ${{ steps.prepare.outputs.build_args }}
-        context: build/docker-buildx
-        file: build/docker-buildx/Dockerfile.docker-buildx
+        context: build/buildkit
+        file: build/buildkit/Dockerfile.buildkit
         labels: |-
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}

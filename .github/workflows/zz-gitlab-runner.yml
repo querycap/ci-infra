@@ -1,13 +1,13 @@
-name: gitlab-runner-gitlab-runner-helper
+name: gitlab-runner
 "on":
   push:
     paths:
-    - .github/workflows/gitlab-runner-gitlab-runner-helper.yml
-    - build/gitlab-runner/Dockerfile.gitlab-runner-helper
+    - .github/workflows/zz-gitlab-runner.yml
+    - build/gitlab-runner/Dockerfile.gitlab-runner
     - build/gitlab-runner/Dockerfile.version
     - build/gitlab-runner/Makefile
 jobs:
-  gitlab-runner-helper:
+  gitlab-runner:
     runs-on:
     - ubuntu-latest
     services:
@@ -39,7 +39,7 @@ jobs:
     - id: prepare
       name: prepare
       env:
-        NAME: gitlab-runner-helper
+        NAME: gitlab-runner
       run: |-
         if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
           export TAG=temp-${{ github.sha }}
@@ -50,7 +50,7 @@ jobs:
       with:
         build-args: ${{ steps.prepare.outputs.build_args }}
         context: build/gitlab-runner
-        file: build/gitlab-runner/Dockerfile.gitlab-runner-helper
+        file: build/gitlab-runner/Dockerfile.gitlab-runner
         labels: |-
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}

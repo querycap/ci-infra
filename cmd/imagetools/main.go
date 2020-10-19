@@ -25,7 +25,7 @@ func init() {
 }
 
 func cleanup() error {
-	files, err := Glob(".github/workflows/*")
+	files, err := Glob(".github/workflows/zz-*")
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func writeWorkflow(w *GithubWorkflow) {
 }
 
 func workflowFilename(name string) string {
-	return fmt.Sprintf(".github/workflows/%s.yml", name)
+	return fmt.Sprintf(".github/workflows/zz-%s.yml", name)
 }
 
 func nameDockerfile(dockerfile string) string {
