@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -151,15 +150,6 @@ updates:
     schedule:
       interval: "daily"
 `)
-
-	projects.Range(func(p *Project) {
-		_, _ = io.WriteString(buf, fmt.Sprintf(`
-  - package-ecosystem: "docker"
-    directory: "/build/%s"
-    schedule:
-      interval: "daily"
-`, p.Name))
-	})
 
 	_ = generateFile(".github/dependabot.yml", buf.Bytes())
 }
