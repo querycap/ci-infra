@@ -125,10 +125,6 @@ make prepare
 
 			w.Jobs = map[string]*WorkflowJob{
 				name: Job(
-					JobService("registry", WorkflowService{
-						Image: "registry:2",
-						Ports: []string{"5000:5000"},
-					}),
 					JobDefaultsWorkingDirectory(workingDir),
 					JobStrategyMatrix(p.Workflow.Matrix),
 					JobRunsOn(p.Workflow.RunsOn...),

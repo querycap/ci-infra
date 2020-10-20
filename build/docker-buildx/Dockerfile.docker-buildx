@@ -1,9 +1,16 @@
 # syntax = docker/dockerfile:experimental
 
-ARG VERSION=master
-FROM localhost:5000/src:${VERSION} as src
+FROM --platform=${BUILDPLATFORM} golang:1.15 AS src
 
-FROM golang:1.15 as builder
+ARG VERSION
+RUN git clone --depth 1 -b ${VERSION} https://github.com/docker/buildx.git /go/src/
+
+WORKDIR /go/src/
+
+RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
+    go mod download
+
+FROM golang:1.15 AS builder
 
 COPY --from=src /go/src /go/src
 

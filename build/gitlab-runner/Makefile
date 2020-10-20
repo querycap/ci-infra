@@ -1,4 +1,4 @@
-VERSION = $(shell cat Dockerfile.version | grep "^FROM " | sed -e "s/FROM.*:alpine-v//g" )
+VERSION = $(shell cat Dockerfile.version | grep "^FROM " | sed -e "s/FROM.*:v//g" )
 NAME ?= gitlab-runner
 TAG ?= $(VERSION)
 

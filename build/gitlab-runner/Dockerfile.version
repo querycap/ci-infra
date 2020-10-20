@@ -1,2 +1,2 @@
-# @opt:prefix alpine-v
-FROM gitlab/gitlab-runner:alpine-v13.4.0
+# @opt:prefix v
+FROM gitlab/gitlab-runner:v13.4.0

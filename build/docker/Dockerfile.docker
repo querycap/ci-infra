@@ -1,3 +1,0 @@
-ARG VERSION
-
-FROM docker.io/library/docker:${VERSION}

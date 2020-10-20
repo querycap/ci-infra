@@ -1,1 +1,0 @@
-FROM library/docker:19.03.13-dind
