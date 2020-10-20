@@ -1,25 +1,24 @@
 # syntax = docker/dockerfile:experimental
 
-FROM --platform=${BUILDPLATFORM} golang:1.15 AS src
+FROM --platform=${BUILDPLATFORM} golang:1.15 AS builder
 
 ARG VERSION
 RUN git clone --depth 1 -b ${VERSION} https://github.com/docker/buildx.git /go/src/
 
 WORKDIR /go/src/
 
-RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
-    go mod download
+ENV ARCHS "amd64 arm64"
 
-FROM golang:1.15 AS builder
+RUN for ARCH in ${ARCHS}; do \
+        CGO_ENABLED=0 GOARCH=${ARCH} go build -o /go/bin/docker-buildx-${ARCH} ./cmd/buildx; \
+    done
 
-COPY --from=src /go/src /go/src
-
-WORKDIR /go/src/
-
-RUN --mount=type=cache,id=gomod,target=/go/pkg/mod \
-    CGO_ENABLED=0 go build -o /go/bin/docker-buildx ./cmd/buildx
 
 FROM docker
+ARG TARGETARCH
+
 RUN apk add --no-cache make
-COPY --from=builder /go/bin/docker-buildx /root/.docker/cli-plugins/docker-buildx
+
+COPY --from=builder /go/bin/docker-buildx-${TARGETARCH} /root/.docker/cli-plugins/docker-buildx
+
 ENV DOCKER_CLI_EXPERIMENTAL=enabled
