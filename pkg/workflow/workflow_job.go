@@ -1,11 +1,13 @@
 package workflow
 
 type WorkflowJob struct {
-	RunsOn   []string                   `yaml:"runs-on,omitempty"`
+	If       string                     `yaml:"if,omitempty"`
 	Needs    []string                   `yaml:"needs,omitempty"`
+	Strategy *WorkflowJobStrategy       `yaml:"strategy,omitempty"`
+	RunsOn   interface{}                `yaml:"runs-on,omitempty"`
 	Services map[string]WorkflowService `yaml:"services,omitempty"`
 	Defaults *WorkflowJobDefaults       `yaml:"defaults,omitempty"`
-	Strategy *WorkflowJobStrategy       `yaml:"strategy,omitempty"`
+	Outputs  map[string]string          `yaml:"outputs,omitempty"`
 	Steps    []*WorkflowStep            `yaml:"steps,omitempty"`
 }
 
@@ -40,7 +42,11 @@ func Job(optFuncs ...JobOptionFunc) *WorkflowJob {
 func JobRunsOn(runsOn ...string) JobOptionFunc {
 	return func(s *WorkflowJob) {
 		if len(runsOn) == 0 {
-			s.RunsOn = []string{"ubuntu-latest"}
+			s.RunsOn = "ubuntu-latest"
+			return
+		}
+		if len(runsOn) == 1 {
+			s.RunsOn = runsOn[0]
 			return
 		}
 		s.RunsOn = runsOn
@@ -67,7 +73,6 @@ func JobStrategyMatrix(matrix map[string][]string) JobOptionFunc {
 		if len(matrix) == 0 {
 			return
 		}
-
 		if s.Strategy == nil {
 			s.Strategy = &WorkflowJobStrategy{}
 		}
@@ -81,5 +86,23 @@ func JobService(name string, svc WorkflowService) JobOptionFunc {
 			s.Services = map[string]WorkflowService{}
 		}
 		s.Services[name] = svc
+	}
+}
+
+func JobOutputs(outputs map[string]string) JobOptionFunc {
+	return func(s *WorkflowJob) {
+		s.Outputs = outputs
+	}
+}
+
+func JobNeeds(needs ...string) JobOptionFunc {
+	return func(s *WorkflowJob) {
+		s.Needs = needs
+	}
+}
+
+func JobIf(cond string) JobOptionFunc {
+	return func(s *WorkflowJob) {
+		s.If = cond
 	}
 }

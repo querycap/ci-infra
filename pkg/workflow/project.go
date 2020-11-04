@@ -87,6 +87,7 @@ type Schedule struct {
 
 type Workflow struct {
 	RunsOn    []string            `yaml:"runs-on,omitempty"`
+	QEMU      *bool               `yaml:"qemu,omitempty"`
 	Platforms []string            `yaml:"platforms,omitempty"`
 	Schedule  []Schedule          `yaml:"schedule,omitempty"`
 	Matrix    map[string][]string `yaml:"matrix,omitempty"`

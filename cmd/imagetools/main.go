@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -80,61 +81,137 @@ func generateWorkflows(projects Projects) {
 				},
 			}
 
+			jobs := map[string]*WorkflowJob{}
+
+			steps := []*WorkflowStep{
+				Step(StepUses("actions/checkout@v2")),
+			}
+
+			runsOn := p.Workflow.RunsOn
+
+			platforms := p.Workflow.Platforms
+
+			if len(platforms) == 0 {
+				platforms = []string{"linux/amd64", "linux/arm64"}
+			}
+
+			if p.Workflow.QEMU == nil {
+				enabled := true
+				p.Workflow.QEMU = &enabled
+			}
+
 			env := map[string]string{}
+
+			matrixArch := map[string][]string{}
 
 			if len(p.Workflow.Schedule) > 0 {
 				w.On["schedule"] = p.Workflow.Schedule
 			}
 
+			workingDir := filepath.Join(basePathForBuild, p.Name)
+
+			dockerSetupSteps, dockerPushStep := resolveDockerSteps(workingDir, name)
+
+			if *p.Workflow.QEMU {
+				steps = append(steps, Step(StepUses("docker/setup-qemu-action@v1")))
+
+				if len(runsOn) == 0 {
+					runsOn = []string{
+						"ubuntu-latest",
+					}
+				}
+			} else {
+				matrixArch["arch"] = toArchs(platforms)
+
+				if len(runsOn) == 0 {
+					runsOn = []string{
+						Ref(`matrix.arch != 'amd64' && fromJSON(format('["self-hosted","linux","{0}"]', matrix.arch)) || 'ubuntu-latest'`),
+					}
+				} else {
+					runsOn = append(runsOn, "linux", "${{ matrix.arch }}")
+				}
+
+				combineSteps := append([]*WorkflowStep{}, dockerSetupSteps...)
+
+				combineSteps = append(combineSteps, Step(
+					StepName("Combine"),
+					StepEnv(env, map[string]string{
+						"IMAGE":       Ref("needs", name, "outputs", "image"),
+						"HUB":         hub,
+						"TARGET_ARCH": strings.Join(toArchs(platforms), " "),
+					}),
+					StepRun(`
+for h in ${HUB}; do
+  SOURCES=""
+  for arch in ${TARGET_ARCH}; do
+    SOURCES="${SOURCES} ${h}/${IMAGE}-${arch}"
+  done
+
+  docker buildx imagetools create -t ${h}/${IMAGE} ${SOURCES};
+  docker buildx imagetools inspect ${h}/${IMAGE};
+done
+`)))
+
+				jobs[name+"-combine"] = Job(
+					JobIf("${{ github.event_name != 'pull_request' }}"),
+					JobStrategyMatrix(p.Workflow.Matrix),
+					JobNeeds(name),
+					JobRunsOn("ubuntu-latest"),
+					JobSteps(combineSteps...),
+				)
+			}
+
 			if len(p.Workflow.Matrix) > 0 {
 				for k := range p.Workflow.Matrix {
-					env[k] = "${{ matrix." + k + " }}"
+					env[k] = Ref("matrix", k)
 				}
 			}
 
-			workingDir := filepath.Join(basePathForBuild, p.Name)
-
-			steps := []*WorkflowStep{
-				Step(StepUses("actions/checkout@v2")),
-				Step(StepUses("docker/setup-qemu-action@v1")),
-				Step(StepUses("docker/setup-buildx-action@v1"), StepWith(map[string]string{
-					"driver-opts": "network=host",
-				})),
-			}
-
-			dockerLoginSteps, dockerPushStep := resolveDockerSteps(workingDir, name, p.Workflow.Platforms)
-
-			steps = append(steps, dockerLoginSteps...)
+			steps = append(steps, dockerSetupSteps...)
 
 			steps = append(steps,
 				Step(
-					StepName("prepare"),
+					StepName("Prepare"),
 					StepID("prepare"),
 					StepEnv(env, map[string]string{
-						"NAME": name,
+						"GITHUB_SHA": Ref("github", "ref"),
+						"GITHUB_REF": Ref("github", "sha"),
+						"NAME":       name,
 					}),
-					StepRun(`
-if [[ ${{ github.ref }} != "refs/heads/master" ]]; then
-  export TAG=temp-${{ github.sha }}
+					StepRun(setOutputTargetPlatforms(platforms, *p.Workflow.QEMU)+`
+if [[ ${GITHUB_REF} != "refs/heads/master" ]]; then
+  export TAG=sha-${GITHUB_SHA::7}
 fi
+
 make prepare
 `),
 				),
 				dockerPushStep,
 			)
 
-			w.Jobs = map[string]*WorkflowJob{
-				name: Job(
-					JobDefaultsWorkingDirectory(workingDir),
-					JobStrategyMatrix(p.Workflow.Matrix),
-					JobRunsOn(p.Workflow.RunsOn...),
-					JobSteps(steps...),
-				),
-			}
+			jobs[name] = Job(
+				JobStrategyMatrix(mergeMatrix(p.Workflow.Matrix, matrixArch)),
+				JobOutputs(map[string]string{"image": stepPrepareOutput("image")}),
+				JobDefaultsWorkingDirectory(workingDir),
+				JobRunsOn(runsOn...),
+				JobSteps(steps...),
+			)
+
+			w.Jobs = jobs
 
 			writeWorkflow(w)
 		}
 	})
+}
+
+func mergeMatrix(matrixes ...map[string][]string) map[string][]string {
+	m := map[string][]string{}
+	for _, mat := range matrixes {
+		for k := range mat {
+			m[k] = mat[k]
+		}
+	}
+	return m
 }
 
 func generateDependabot(projects Projects) {
@@ -146,6 +223,15 @@ updates:
     schedule:
       interval: "daily"
 `)
+
+	projects.Range(func(p *Project) {
+		_, _ = io.WriteString(buf, fmt.Sprintf(`
+  - package-ecosystem: "docker"
+    directory: "/build/%s"
+    schedule:
+      interval: "daily"
+`, p.Name))
+	})
 
 	_ = generateFile(".github/dependabot.yml", buf.Bytes())
 }
@@ -174,17 +260,19 @@ func generateFile(filename string, data []byte) error {
 	return ioutil.WriteFile(filename, data, os.ModePerm)
 }
 
-func resolveDockerSteps(workingDir string, name string, platforms []string) ([]*WorkflowStep, *WorkflowStep) {
-	imageTags := make([]string, 0)
-	steps := make([]*WorkflowStep, 0)
+var stepPrepareOutput = OutputFromStep("prepare")
 
-	if len(platforms) == 0 {
-		platforms = []string{"linux/amd64", "linux/arm64"}
+func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *WorkflowStep) {
+	imageTags := make([]string, 0)
+	steps := []*WorkflowStep{
+		Step(StepUses("docker/setup-buildx-action@v1"), StepWith(map[string]string{
+			"driver-opts": "network=host",
+		})),
 	}
 
 	for _, h := range strings.Split(hub, " ") {
 		if h != "" {
-			imageTags = append(imageTags, fmt.Sprintf(`%s/${{ steps.prepare.outputs.image }}`, h))
+			imageTags = append(imageTags, fmt.Sprintf(`%s/%s%s`, h, stepPrepareOutput("image"), stepPrepareOutput("image_suffix")))
 
 			registry := strings.Split(h, "/")[0]
 
@@ -208,19 +296,38 @@ func resolveDockerSteps(workingDir string, name string, platforms []string) ([]*
 	}
 
 	return steps, Step(
-		StepName("Push"),
+		StepName("Build & May Push"),
 		StepUses("docker/build-push-action@v2"),
 		StepWith(map[string]string{
 			"context":    workingDir,
 			"file":       workingDir + "/Dockerfile." + name,
 			"push":       "${{ github.event_name != 'pull_request' }}",
-			"build-args": "${{ steps.prepare.outputs.build_args }}",
+			"build-args": stepPrepareOutput("build_args"),
 			"labels": strings.Join([]string{
 				"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
 				"org.opencontainers.image.revision=${{ github.sha }}",
 			}, "\n"),
-			"platforms": strings.Join(platforms, ","),
+			"platforms": stepPrepareOutput("target_platforms"),
 			"tags":      strings.Join(imageTags, "\n"),
 		}),
 	)
+}
+
+func setOutputTargetPlatforms(platforms []string, qemu bool) string {
+	if qemu {
+		return fmt.Sprintf(`
+echo ::set-output name=target_platforms::%s
+`, strings.Join(platforms, ","))
+	}
+	return `
+echo ::set-output name=image_suffix::-${{ matrix.arch }}
+echo ::set-output name=target_platforms::linux/${{ matrix.arch }}
+`
+}
+
+func toArchs(platforms []string) (archs []string) {
+	for _, arch := range platforms {
+		archs = append(archs, strings.Split(arch, "/")[1])
+	}
+	return
 }
