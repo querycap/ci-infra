@@ -53,8 +53,51 @@ func main() {
 	data, _ := yaml.Marshal(projects)
 	fmt.Println(string(data))
 
+	generateCommonMake()
 	generateWorkflows(projects)
 	generateDependabot(projects)
+}
+
+func generateCommonMake() {
+	buf := bytes.NewBufferString(`
+DOCKERX_CONTEXT ?= .
+DOCKERX_NAME ?= default
+DOCKERX_OUTPUT ?=
+DOCKERX_PUSH ?= false
+DOCKERX_ARCH_SUFFIX ?= false
+DOCKERX_PLATFORMS ?= linux/amd64 linux/arm64
+DOCKERX_BUILD_ARGS ?=
+DOCKERX_LABELS ?=
+DOCKERX_TAGS ?= latest
+DOCKERX_TAG_SUFFIX ?=
+
+ifeq ($(DOCKERX_PUSH),true)
+	DOCKERX_OUTPUT = --push
+endif
+
+dockerx:
+	@set -x; \
+	\
+	docker buildx build $(DOCKERX_OUTPUT) \
+		$(foreach h,$(HUB),$(foreach t,$(DOCKERX_TAGS),--tag=$(h)/$(DOCKERX_NAME):$(t)$(DOCKERX_TAG_SUFFIX))) \
+		$(foreach p,$(DOCKERX_PLATFORMS),--platform=$(p)) \
+		$(foreach a,$(DOCKERX_BUILD_ARGS),--build-arg=$(a)) \
+		$(foreach l,$(DOCKERX_LABELS),--label=$(l)) \
+		--file $(DOCKERX_CONTEXT)/Dockerfile.$(DOCKERX_NAME) $(DOCKERX_CONTEXT)
+
+imagetools:
+	@set -x; \
+	\
+	for h in $(HUB); do \
+	  for t in $(DOCKERX_TAGS); do \
+	    docker buildx imagetools create \
+	  	  --tag=$${h}/$(DOCKERX_NAME):$${t} \
+	  	  $(foreach p,$(DOCKERX_PLATFORMS),$${h}/$(DOCKERX_NAME):$${t}-$(word 2,$(subst /, ,$(p)))); \
+	  done; \
+	done
+`)
+
+	_ = generateFile("build/Makefile", buf.Bytes())
 }
 
 func generateWorkflows(projects Projects) {
@@ -110,7 +153,7 @@ func generateWorkflows(projects Projects) {
 
 			workingDir := filepath.Join(basePathForBuild, p.Name)
 
-			dockerSetupSteps, dockerPushStep := resolveDockerSteps(workingDir, name)
+			dockerSetupSteps := resolveDockerSteps()
 
 			if *p.Workflow.QEMU {
 				steps = append(steps, Step(StepUses("docker/setup-qemu-action@v1")))
@@ -131,29 +174,27 @@ func generateWorkflows(projects Projects) {
 					runsOn = append(runsOn, "linux", "${{ matrix.arch }}")
 				}
 
-				combineSteps := append([]*WorkflowStep{}, dockerSetupSteps...)
+				combineSteps := append(steps, dockerSetupSteps...)
 
 				combineSteps = append(combineSteps, Step(
 					StepName("Combine"),
 					StepEnv(env, map[string]string{
-						"IMAGE":       Ref("needs", name, "outputs", "image"),
-						"HUB":         hub,
-						"TARGET_ARCH": strings.Join(toArchs(platforms), " "),
+						"HUB":               hub,
+						"DOCKERX_NAME":      name,
+						"DOCKERX_PLATFORMS": strings.Join(platforms, " "),
+						"GITHUB_SHA":        Ref("github", "sha"),
+						"GITHUB_REF":        Ref("github", "ref"),
 					}),
 					StepRun(`
-for h in ${HUB}; do
-  SOURCES=""
-  for arch in ${TARGET_ARCH}; do
-    SOURCES="${SOURCES} ${h}/${IMAGE}-${arch}"
-  done
-
-  docker buildx imagetools create -t ${h}/${IMAGE} ${SOURCES};
-  docker buildx imagetools inspect ${h}/${IMAGE};
-done
+if [[ ${GITHUB_REF} != "refs/heads/master" ]]; then
+  export DOCKERX_TAGS=sha-${GITHUB_SHA::7}
+fi
+make imagetools
 `)))
 
 				jobs[name+"-combine"] = Job(
 					JobIf("${{ github.event_name != 'pull_request' }}"),
+					JobDefaultsWorkingDirectory(workingDir),
 					JobStrategyMatrix(p.Workflow.Matrix),
 					JobNeeds(name),
 					JobRunsOn("ubuntu-latest"),
@@ -169,24 +210,35 @@ done
 
 			steps = append(steps, dockerSetupSteps...)
 
+			envs := map[string]string{
+				"HUB":               hub,
+				"DOCKERX_NAME":      name,
+				"DOCKERX_PLATFORMS": strings.Join(platforms, " "),
+				"DOCKERX_LABELS": strings.Join([]string{
+					"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+					"org.opencontainers.image.revision=${{ github.sha }}",
+				}, " "),
+				"DOCKERX_PUSH": Ref("github.event_name != 'pull_request'"),
+				"GITHUB_SHA":   Ref("github", "sha"),
+				"GITHUB_REF":   Ref("github", "ref"),
+			}
+
+			if !*p.Workflow.QEMU {
+				envs["DOCKERX_PLATFORMS"] = `linux/${{ matrix.arch }}`
+				envs["DOCKERX_TAG_SUFFIX"] = `-${{ matrix.arch }}`
+			}
+
 			steps = append(steps,
 				Step(
-					StepName("Prepare"),
-					StepID("prepare"),
-					StepEnv(env, map[string]string{
-						"GITHUB_SHA": Ref("github", "ref"),
-						"GITHUB_REF": Ref("github", "sha"),
-						"NAME":       name,
-					}),
-					StepRun(setOutputTargetPlatforms(platforms, *p.Workflow.QEMU)+`
+					StepName("Build && May push"),
+					StepEnv(env, envs),
+					StepRun(`
 if [[ ${GITHUB_REF} != "refs/heads/master" ]]; then
-  export TAG=sha-${GITHUB_SHA::7}
+  export DOCKERX_TAGS=sha-${GITHUB_SHA::7}
 fi
-
-make prepare
+make dockerx
 `),
 				),
-				dockerPushStep,
 			)
 
 			jobs[name] = Job(
@@ -262,8 +314,7 @@ func generateFile(filename string, data []byte) error {
 
 var stepPrepareOutput = OutputFromStep("prepare")
 
-func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *WorkflowStep) {
-	imageTags := make([]string, 0)
+func resolveDockerSteps() []*WorkflowStep {
 	steps := []*WorkflowStep{
 		Step(StepUses("docker/setup-buildx-action@v1"), StepWith(map[string]string{
 			"driver-opts": "network=host",
@@ -272,8 +323,6 @@ func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *Workf
 
 	for _, h := range strings.Split(hub, " ") {
 		if h != "" {
-			imageTags = append(imageTags, fmt.Sprintf(`%s/%s%s`, h, stepPrepareOutput("image"), stepPrepareOutput("image_suffix")))
-
 			registry := strings.Split(h, "/")[0]
 
 			hubLogin := map[string]string{
@@ -295,34 +344,7 @@ func resolveDockerSteps(workingDir string, name string) ([]*WorkflowStep, *Workf
 		}
 	}
 
-	return steps, Step(
-		StepName("Build & May Push"),
-		StepUses("docker/build-push-action@v2"),
-		StepWith(map[string]string{
-			"context":    workingDir,
-			"file":       workingDir + "/Dockerfile." + name,
-			"push":       "${{ github.event_name != 'pull_request' }}",
-			"build-args": stepPrepareOutput("build_args"),
-			"labels": strings.Join([]string{
-				"org.opencontainers.image.source=https://github.com/${{ github.repository }}",
-				"org.opencontainers.image.revision=${{ github.sha }}",
-			}, "\n"),
-			"platforms": stepPrepareOutput("target_platforms"),
-			"tags":      strings.Join(imageTags, "\n"),
-		}),
-	)
-}
-
-func setOutputTargetPlatforms(platforms []string, qemu bool) string {
-	if qemu {
-		return fmt.Sprintf(`
-echo ::set-output name=target_platforms::%s
-`, strings.Join(platforms, ","))
-	}
-	return `
-echo ::set-output name=image_suffix::-${{ matrix.arch }}
-echo ::set-output name=target_platforms::linux/${{ matrix.arch }}
-`
+	return steps
 }
 
 func toArchs(platforms []string) (archs []string) {

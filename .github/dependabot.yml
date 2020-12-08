@@ -9,3 +9,8 @@ updates:
     directory: "/build/gitlab-runner"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: "docker"
+    directory: "/build/gn"
+    schedule:
+      interval: "daily"
