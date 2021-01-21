@@ -1,2 +1,2 @@
 # @opt:prefix v
-FROM gitlab/gitlab-runner:v13.7.0
+FROM gitlab/gitlab-runner:v13.8.0
